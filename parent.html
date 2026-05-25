@@ -19,7 +19,7 @@
         .incident-meta { font-size: 0.85rem; color: #333; line-height: 1.4; }
         .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
 
-        /* Fixed Mobile Optimization - Stops map from pushing controls off-screen */
+        /* Fixed Mobile Optimization - Keeps controls and map elements perfectly separated */
         @media (max-width: 768px) {
             .dashboard { flex-direction: column; }
             .sidebar { 
@@ -45,10 +45,11 @@
                 font-size: 0.9rem !important;
             }
             #map { 
-                height: 100vh;
+                position: absolute;
+                top: 70px; /* Shifts the entire map view below the header bar */
+                left: 0;
+                height: calc(100vh - 70px);
                 width: 100%;
-                padding-top: 70px; /* Safe zone for the fixed header */
-                box-sizing: border-box;
             }
             .incident-popup { min-width: 180px; }
         }
@@ -77,7 +78,6 @@
     <script>
         let routeLinesLayer, publicHazardLayer;
 
-        // Show mobile heading if layout breaks down
         if(window.innerWidth <= 768) {
             document.querySelector('.mobile-title').style.display = 'block';
         }
@@ -86,17 +86,14 @@
             if (!user) {
                 window.location.href = "index.html";
             } else {
-                // Initialize map with autoPan padding options so popups don't slide under or push the header
                 initMap('map');
                 
-                // Configure map popup behavior globally for mobile safety
                 map.on('popupopen', function(e) {
                     if (window.innerWidth <= 768) {
                         map.panTo(e.popup.getLatLng());
                     }
                 });
 
-                // Initialize layer groups and add them to the map
                 routeLinesLayer = L.layerGroup().addTo(map);
                 publicHazardLayer = L.layerGroup().addTo(map);
 
@@ -124,7 +121,6 @@
             const currentZoom = map.getZoom();
             const scales = getScales(currentZoom);
 
-            // Scale the hazard layer items
             publicHazardLayer.eachLayer(layer => {
                 if (layer instanceof L.Polyline) {
                     layer.setStyle({ weight: scales.lineWidth });
@@ -162,13 +158,12 @@
                     if (school.routes) {
                         Object.values(school.routes).forEach(route => {
                             if (route.coords && route.coords.length >= 2) {
-                                // Add popup options with custom autoPanPadding to prevent layout shifts
                                 L.polyline(route.coords, {
                                     color: route.color || '#409EFF',
                                     weight: 4,
                                     opacity: 0.85
                                 }).addTo(routeLinesLayer).bindPopup(`<b>Bus Route:</b> ${route.name}`, {
-                                    autoPanPaddingTopLeft: L.point(10, 85)
+                                    autoPanPaddingTopLeft: L.point(10, 20)
                                 });
                             }
                         });
@@ -200,17 +195,15 @@
                         `;
 
                         const popupOptions = {
-                            autoPanPaddingTopLeft: L.point(10, 85) // Forces Leaflet to keep popups 85px away from top (protects header)
+                            autoPanPaddingTopLeft: L.point(10, 20)
                         };
 
-                        // Solid line tracking the hazard zone
                         L.polyline(h.coords, { 
                             color: hazardColor, 
                             weight: scales.lineWidth, 
                             opacity: 0.85 
                         }).addTo(publicHazardLayer).bindPopup(popupContent, popupOptions);
 
-                        // Exactly ONE warning icon at the start coordinate of the polyline
                         L.marker(h.coords[0], {
                             icon: createHazardIcon(hazardColor, scales.iconSize),
                             hazardColor: hazardColor
