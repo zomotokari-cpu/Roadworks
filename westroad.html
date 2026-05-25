@@ -249,6 +249,7 @@
         let hazardLinesLayer, hazardNodesLayer;
         let interactionState = { mode: null, hazardId: null, nodeIndex: null };
         let movingMarkerRef = null;
+        let localCoordsCache = null; // Speichert den aktuellen Pfad während des Ziehens/Zeichnens
 
         // Mobile Sidebar Toggle Orchestration Logic
         function toggleMobileSidebar() {
@@ -282,6 +283,10 @@
         // =========================================================================
         function listenToHazards() {
             db.ref('hazards').on('value', snapshot => {
+                // WICHTIG: Wenn wir aktiv editieren, ignorieren wir eingehende DB-Updates beim Rendern,
+                // um nervige Resets / Flackern zu verhindern.
+                if (interactionState.mode) return;
+
                 const hazardsData = snapshot.val() || {};
                 renderHazards(hazardsData);
             });
@@ -305,24 +310,31 @@
                     hazard.coords[interactionState.nodeIndex] = clickedPoint;
                     map.off('mousemove', handleMarkerFollow);
                     movingMarkerRef = null;
-                    resetInteraction();
-                    hazardRef.update({ coords: hazard.coords });
+                    
+                    // Erst in Firebase speichern, DANN Interaktion aufheben
+                    hazardRef.update({ coords: hazard.coords }).then(() => {
+                        resetInteraction();
+                        listenToHazards(); // Einmal manuell triggern
+                    });
                 } 
                 else if (interactionState.mode === 'new') {
                     hazard.coords.push(clickedPoint);
+                    localCoordsCache = [...hazard.coords]; // Cache aktualisieren
                     interactionState.mode = 'after';
-                    interactionState.nodeIndex = 0;
-                    showIndicator(`Expanding Zone: Click map to append more path nodes. Click 'Done' to finalize.`);
+                    interactionState.nodeIndex = hazard.coords.length - 1;
+                    showIndicator(`Click on the map to draw the zone. Click 'Done' when finished.`);
                     hazardRef.update({ coords: hazard.coords });
                 } 
                 else if (interactionState.mode === 'before') {
                     hazard.coords.splice(interactionState.nodeIndex, 0, clickedPoint);
-                    resetInteraction();
-                    hazardRef.update({ coords: hazard.coords });
+                    hazardRef.update({ coords: hazard.coords }).then(() => {
+                        resetInteraction();
+                    });
                 } 
                 else if (interactionState.mode === 'after') {
                     hazard.coords.splice(interactionState.nodeIndex + 1, 0, clickedPoint);
                     interactionState.nodeIndex++; 
+                    localCoordsCache = [...hazard.coords]; // Cache aktualisieren
                     hazardRef.update({ coords: hazard.coords });
                 }
             });
@@ -360,7 +372,6 @@
                         L.DomEvent.preventDefault(e);
                         L.DomEvent.stopPropagation(e);
                         
-                        // Prevent loading the popup menu if user is actively scaling/moving items
                         if (interactionState.mode) return;
 
                         window.currentSelectedMarker = nodeMarker;
@@ -375,9 +386,9 @@
                             .setContent(`
                                 <div class="popup-menu">
                                     <h4 style="margin: 0 0 5px 0; font-size: 1rem;">${hazard.title}</h4>
-                                    <button onclick="window.startNodeMove('${hazardId}', ${index})">📍 Move Node Point</button>
-                                    <button onclick="window.prepareInsertion('${hazardId}', ${index}, 'before')">➕ Append Point Before</button>
-                                    <button onclick="window.prepareInsertion('${hazardId}', ${index}, 'after')">➕ Append Point After</button>
+                                    <button onclick="window.startNodeMove('${hazardId}', ${index})">📍 Move Node</button>
+                                    <button onclick="window.prepareInsertion('${hazardId}', ${index}, 'before')">➕ Add Node Before</button>
+                                    <button onclick="window.prepareInsertion('${hazardId}', ${index}, 'after')">➕ Add Node After</button>
                                     <button class="danger-action" onclick="window.deleteNode('${hazardId}', ${index})">❌ Delete Node</button>
                                 </div>
                             `).openOn(map);
@@ -385,7 +396,6 @@
 
                     nodeMarker.on('contextmenu', triggerNodeMenu);
                     nodeMarker.on('click', (e) => {
-                        // Prevent conflict if device is in desktop mode and mouse dragging is active
                         if (interactionState.mode) {
                             L.DomEvent.stopPropagation(e);
                             return;
@@ -421,26 +431,34 @@
             map.closePopup();
             interactionState = { mode: 'move', hazardId: hazardId, nodeIndex: index };
             movingMarkerRef = window.currentSelectedMarker;
-            showIndicator("📍 Mode: Moving Point. Tap/Click new position onto map.");
-            map.on('mousemove', handleMarkerFollow);
+            showIndicator("📍 Click the new position onto map.");
+            
+            // Hol den aktuellen Pfad einmalig in den lokalen Speicher, 
+            // damit das Ziehen flüssig läuft und nicht ständig die DB anfragt
+            db.ref(`hazards/${hazardId}/coords`).once('value').then(snap => {
+                localCoordsCache = snap.val() || [];
+                map.on('mousemove', handleMarkerFollow);
+            });
         };
 
         function handleMarkerFollow(e) {
-            if (interactionState.mode !== 'move' || !movingMarkerRef) return;
+            if (interactionState.mode !== 'move' || !movingMarkerRef || !localCoordsCache) return;
+            
+            // 1. Bewege den Marker visuell sofort mit der Maus
             movingMarkerRef.setLatLng(e.latlng);
             
-            db.ref(`hazards/${interactionState.hazardId}/coords`).once('value').then(snap => {
-                let coords = snap.val() || [];
-                coords[interactionState.nodeIndex] = [e.latlng.lat, e.latlng.lng];
-                hazardLinesLayer.clearLayers();
-                L.polyline(coords, { color: '#F56C6C', weight: 5, opacity: 0.5, dashArray: '5, 10' }).addTo(hazardLinesLayer);
-            });
+            // 2. Aktualisiere den lokalen Cache
+            localCoordsCache[interactionState.nodeIndex] = [e.latlng.lat, e.latlng.lng];
+            
+            // 3. Zeichne die rote gestrichelte Vorschau-Linie rein lokal neu (superschnell)
+            hazardLinesLayer.clearLayers();
+            L.polyline(localCoordsCache, { color: '#F56C6C', weight: 5, opacity: 0.6, dashArray: '5, 10' }).addTo(hazardLinesLayer);
         }
 
         window.prepareInsertion = function(hazardId, index, position) {
             map.closePopup();
             interactionState = { mode: position, hazardId: hazardId, nodeIndex: index };
-            showIndicator(position === 'before' ? "Tap map to inject node point BEFORE selected track..." : "Tap map to inject node point AFTER selected track...");
+            showIndicator(position === 'before' ? "Tap map to inject node point before selected node..." : "Tap map to inject node point after selected node...");
         };
 
         document.getElementById('add-hazard-btn').onclick = function() {
@@ -472,8 +490,9 @@
                     document.getElementById('sidebar-panel').classList.remove('active');
                 }
 
+                localCoordsCache = [];
                 interactionState = { mode: 'new', hazardId: newId, nodeIndex: 0 };
-                showIndicator("🗺️ Click/Tap map surface grid to begin drawing your zone path lines!");
+                showIndicator("Click on the map to start drawing the zone.");
             });
         };
 
@@ -502,6 +521,8 @@
 
         function resetInteraction() {
             interactionState = { mode: null, hazardId: null, nodeIndex: null };
+            movingMarkerRef = null;
+            localCoordsCache = null;
             document.getElementById('action-indicator').style.display = 'none';
             document.getElementById('mobile-controls').style.display = 'none';
         }
@@ -509,10 +530,24 @@
         window.finishDrawingAction = function() {
             if (interactionState.mode === 'move') {
                 map.off('mousemove', handleMarkerFollow);
-                movingMarkerRef = null;
             }
-            resetInteraction();
-            listenToHazards();
+            
+            // Wenn wir im Zeichen-Modus ("new"/"after") waren, sichern wir den finalen Stand
+            if (interactionState.mode && interactionState.hazardId && localCoordsCache) {
+                db.ref(`hazards/${interactionState.hazardId}`).update({ coords: localCoordsCache }).then(() => {
+                    resetInteraction();
+                    // Zwinge den Listener, einmal die sauberen Daten aus der DB zu laden
+                    db.ref('hazards').once('value', snapshot => {
+                        renderHazards(snapshot.val() || {});
+                    });
+                });
+            } else {
+                resetInteraction();
+                // Fallback, falls nur verschoben wurde
+                db.ref('hazards').once('value', snapshot => {
+                    renderHazards(snapshot.val() || {});
+                });
+            }
         };
     </script>
 </body>
