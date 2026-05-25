@@ -6,6 +6,15 @@
     <title>Login - West Coast Transport Hub</title>
     <link rel="stylesheet" href="style.css">
     <style>
+        /* Westland District Council Color Palette & Nature Theme */
+        :root {
+            --wdc-navy: #002147;      /* Official deep corporate blue */
+            --wdc-gold: #D97706;      /* Warm accent gold for public actions */
+            --wdc-gold-hover: #B45309;
+            --wdc-border: #D1D5DB;
+            --wdc-text: #1F2937;
+        }
+
         body {
             margin: 0;
             padding: 0;
@@ -13,8 +22,13 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f8f9fa;
+            /* West Coast Nature Gradient: Deep Forest Green to Vibrant Turquoise/Cyan */
+            background: linear-gradient(135deg, #042F1A 0%, #065F46 45%, #0EA5E9 100%);
+            background-attachment: fixed;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--wdc-text);
         }
+        
         .login-container {
             width: 100%;
             padding: 20px;
@@ -22,63 +36,133 @@
             display: flex;
             justify-content: center;
         }
+        
         .login-box {
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            background: rgba(255, 255, 255, 0.96); /* Slightly translucent for a premium look */
+            padding: 40px 30px;
+            border-radius: 6px;
+            border-top: 6px solid var(--wdc-navy); /* Council branding accent band */
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
         }
+
+        h2 {
+            color: var(--wdc-navy);
+            font-weight: 700;
+            font-size: 1.6rem;
+            letter-spacing: -0.5px;
+            margin-top: 0;
+        }
+
+        .input-group {
+            margin-bottom: 18px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--wdc-navy);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         .input-group input {
             width: 100%;
-            padding: 12px;
-            font-size: 16px !important; /* Prevents iOS auto-zoom */
+            padding: 12px 14px;
+            font-size: 16px !important; /* Prevents mobile browser auto-zoom layouts breakage */
             box-sizing: border-box;
+            border: 1px solid var(--wdc-border);
+            border-radius: 4px;
+            background: #FAFAFA;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--wdc-navy);
+            box-shadow: 0 0 0 3px rgba(0, 33, 71, 0.15);
+            background: #ffffff;
+        }
+
         .btn {
             width: 100%;
             padding: 14px;
-            font-size: 16px;
-            font-weight: bold;
+            font-size: 15px;
+            font-weight: 700;
             cursor: pointer;
-            border-radius: 8px;
+            border-radius: 4px;
             border: none;
-            transition: background 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: background-color 0.2s, transform 0.1s;
         }
-        .btn-primary {
-            background: var(--primary, #409EFF);
-            color: #fff;
+
+        .btn:active {
+            transform: scale(0.99);
         }
+
+        /* Golden civic access variant for community parents */
         .btn-secondary {
-            background: #222;
-            color: #fff;
-            margin-bottom: 25px; /* Spacing below the public map button */
+            background: var(--wdc-gold);
+            color: #ffffff;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.2);
         }
+
+        .btn-secondary:hover {
+            background: var(--wdc-gold-hover);
+        }
+
+        /* Strict institutional corporate styling for administration sign in */
+        .btn-primary {
+            background: var(--wdc-navy);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 33, 71, 0.15);
+        }
+
+        .btn-primary:hover {
+            background: #001530;
+        }
+
         .divider {
             text-align: center;
             position: relative;
-            margin-bottom: 20px;
-            color: #666;
-            font-size: 0.85rem;
-            font-weight: bold;
+            margin-bottom: 24px;
+            color: #6B7280;
+            font-size: 0.75rem;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 1px;
         }
+
         .divider::before, .divider::after {
             content: "";
             position: absolute;
             top: 50%;
-            width: 30%;
+            width: 22%;
             height: 1px;
-            background: #ccc;
+            background: var(--wdc-border);
         }
         .divider::before { left: 0; }
         .divider::after { right: 0; }
 
         @media (max-width: 480px) {
+            body {
+                background: linear-gradient(135deg, #042F1A 0%, #065F46 45%, #0EA5E9 100%);
+            }
             .login-box {
-                padding: 25px 20px;
-                box-shadow: none;
-                background: transparent;
+                padding: 30px 20px;
+                background: #ffffff; /* Keeps form readable on mobile over the vibrant gradient */
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                border-top: 6px solid var(--wdc-navy);
+                border-radius: 6px;
             }
         }
     </style>
@@ -88,13 +172,10 @@
         <div class="login-box">
             <h2 style="text-align: center; margin-bottom: 25px;">West Coast Hub</h2>
             
-            <!-- Quick Public Access Button for Parents (Uses pre-filled credentials) -->
-            <button class="btn btn-secondary" onclick="quickParentLogin()">🗺️ View Live Network Map</button>
+            <button class="btn btn-secondary" onclick="quickParentLogin()">🗺️ View Live Map</button>
             
-            <!-- Structural Divider Line -->
             <div class="divider">Staff Administration</div>
 
-            <!-- Standard Authorized Login Form -->
             <div class="input-group">
                 <label for="email">Email Address</label>
                 <input type="email" id="email" placeholder="name@school.com" autocomplete="email">
@@ -103,13 +184,12 @@
                 <label for="password">Password</label>
                 <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
             </div>
-            <button class="btn btn-primary" onclick="login()" style="margin-top: 15px;">Sign In</button>
+            <button class="btn btn-primary" onclick="login()" style="margin-top: 10px;">Sign In</button>
             
-            <p id="error-msg" style="color: var(--danger); margin-top: 15px; font-size: 0.85rem; font-weight: 600; text-align: center;"></p>
+            <p id="error-msg" style="color: #F56C6C; margin-top: 15px; font-size: 0.85rem; font-weight: 600; text-align: center;"></p>
         </div>
     </div>
 
-    <!-- Firebase Compatibility SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
