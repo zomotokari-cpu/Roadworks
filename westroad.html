@@ -285,8 +285,8 @@
         // =========================================================================
         function listenToHazards() {
             db.ref('hazards').on('value', snapshot => {
-                // Wenn wir aktiv im Move-Modus sind oder neu zeichnen, ignorieren wir externe DB-Updates beim Haupt-Rendern,
-                // da wir die temporären Zustände lokal live rendern.
+                // Wenn wir aktiv im Interaktionsmodus sind, unterdrücken wir das automatische 
+                // DB-Rendering, um Ruckler zu vermeiden. renderLocalProgress übernimmt das Zeichnen.
                 if (interactionState.mode) return;
 
                 const hazardsData = snapshot.val() || {};
@@ -295,24 +295,51 @@
         }
 
         // Lokaler Hilfs-Renderer für sofortiges visuelles Feedback während des Zeichnens
+        // Zeichnet alle anderen Zonen normal weiter, aktualisiert aber die aktive Zone live
         function renderLocalProgress() {
             if (!localCoordsCache || !interactionState.hazardId) return;
-            hazardLinesLayer.clearLayers();
-            hazardNodesLayer.clearLayers();
 
-            if (localCoordsCache.length >= 2) {
-                L.polyline(localCoordsCache, { color: activeDrawingColor, weight: 6, opacity: 0.85 }).addTo(hazardLinesLayer);
-            }
+            db.ref('hazards').once('value').then(snapshot => {
+                const hazardsData = snapshot.val() || {};
+                
+                hazardLinesLayer.clearLayers();
+                hazardNodesLayer.clearLayers();
 
-            localCoordsCache.forEach((coord, index) => {
-                L.circleMarker(coord, {
-                    radius: index === 0 ? 9 : 7, 
-                    fillColor: '#ffffff', 
-                    color: activeDrawingColor, 
-                    weight: 4, 
-                    fillOpacity: 1,
-                    interactive: false // Während des Zeichnens blockieren die Nodes keine Klicks auf die Map
-                }).addTo(hazardNodesLayer);
+                Object.keys(hazardsData).forEach(hazardId => {
+                    let coords = hazardsData[hazardId].coords || [];
+                    let color = hazardsData[hazardId].color;
+                    let title = hazardsData[hazardId].title;
+
+                    // Wenn es die aktuell bearbeitete Zone ist, nehmen wir die lokalen Cache-Koordinaten
+                    if (hazardId === interactionState.hazardId) {
+                        coords = localCoordsCache;
+                        color = activeDrawingColor;
+                    }
+
+                    // Linien zeichnen
+                    if (coords.length >= 2) {
+                        L.polyline(coords, { 
+                            color: color, 
+                            weight: 6, 
+                            opacity: hazardId === interactionState.hazardId ? 0.9 : 0.85,
+                            dashArray: (hazardId === interactionState.hazardId && interactionState.mode === 'move') ? '5, 10' : null
+                        }).addTo(hazardLinesLayer);
+                    }
+
+                    // Nodes zeichnen
+                    coords.forEach((coord, index) => {
+                        const isStart = index === 0;
+                        L.circleMarker(coord, {
+                            radius: isStart ? 9 : 7, 
+                            fillColor: '#ffffff', 
+                            color: color, 
+                            weight: 4, 
+                            fillOpacity: 1,
+                            // Während des Zeichnens blockieren die Nodes der aktiven Zone keine Klicks
+                            interactive: hazardId !== interactionState.hazardId 
+                        }).addTo(hazardNodesLayer);
+                    });
+                });
             });
         }
 
@@ -350,11 +377,16 @@
                     hazardRef.update({ coords: hazard.coords });
                 } 
                 else if (interactionState.mode === 'before') {
+                    // Fügt den Punkt vor dem Index ein
                     hazard.coords.splice(interactionState.nodeIndex, 0, clickedPoint);
-                    hazardRef.update({ coords: hazard.coords }).then(() => {
-                        resetInteraction();
-                        db.ref('hazards').once('value', s => renderHazards(s.val() || {}));
-                    });
+                    localCoordsCache = [...hazard.coords];
+                    
+                    // Schaltet jetzt nahtlos in den fortlaufenden 'after' Modus um,
+                    // genau an der Stelle, an der gerade eingefügt wurde!
+                    interactionState.mode = 'after'; 
+                    
+                    renderLocalProgress();
+                    hazardRef.update({ coords: hazard.coords });
                 } 
                 else if (interactionState.mode === 'after') {
                     hazard.coords.splice(interactionState.nodeIndex + 1, 0, clickedPoint);
@@ -402,7 +434,7 @@
                         if (interactionState.mode) return;
 
                         window.currentSelectedMarker = nodeMarker;
-                        activeDrawingColor = hazard.color; // Farbe für eventuelle spätere Inserts cachen
+                        activeDrawingColor = hazard.color; 
                         
                         if (window.innerWidth <= 768) {
                             const targetPoint = map.project(e.latlng).subtract([0, 90]);
@@ -426,8 +458,6 @@
                     nodeMarker.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
                         if (interactionState.mode) {
-                            // Im aktiven Zeichenmodus leiten wir den Klick direkt an die Map weiter,
-                            // damit man nicht pixelgenau neben Nodes klicken muss.
                             handleMapClick(e);
                             return;
                         }
@@ -475,9 +505,7 @@
             
             movingMarkerRef.setLatLng(e.latlng);
             localCoordsCache[interactionState.nodeIndex] = [e.latlng.lat, e.latlng.lng];
-            
-            hazardLinesLayer.clearLayers();
-            L.polyline(localCoordsCache, { color: activeDrawingColor, weight: 5, opacity: 0.6, dashArray: '5, 10' }).addTo(hazardLinesLayer);
+            renderLocalProgress();
         }
 
         window.prepareInsertion = function(hazardId, index, position) {
@@ -524,6 +552,7 @@
                 localCoordsCache = [];
                 interactionState = { mode: 'new', hazardId: newId, nodeIndex: 0 };
                 showIndicator("Click on the map to start drawing the zone. Right-Click to finish.");
+                renderLocalProgress();
             });
         };
 
@@ -547,7 +576,6 @@
             const ind = document.getElementById('action-indicator');
             ind.innerText = text;
             ind.style.display = 'block';
-            // Der Bestätigungs-Button wird am PC gar nicht mehr benötigt, aber wir zeigen ihn weiterhin auf Mobile an
             if (window.innerWidth <= 768) {
                 document.getElementById('mobile-controls').style.display = 'block';
             }
