@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Westroad Operation Control</title>
+    <title>Westroad Operations Control</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="style.css">
     <style>
@@ -186,10 +186,10 @@
     </div>
 
     <div class="mobile-header">
-        <h2 style="margin: 0; font-size: 1.1rem;">Westroad Control</h2>
+        <h2 style="margin: 0; font-size: 1.1rem;">Operations</h2>
         <div style="display: flex; gap: 8px;">
-            <button class="btn" onclick="toggleMobileSidebar()" style="background: #409EFF; color: #fff; padding: 8px 14px; font-size: 0.9rem;">📋 Toggle Form</button>
-            <button class="btn btn-logout" onclick="logout()" style="margin: 0; padding: 8px 12px; font-size: 0.9rem;">🏃 Sign Out</button>
+            <button class="btn" onclick="toggleMobileSidebar()" style="background: #409EFF; color: #fff; padding: 8px 14px; font-size: 0.9rem;">Menu</button>
+            <button class="btn btn-logout" onclick="logout()" style="margin: 0; padding: 8px 12px; font-size: 0.9rem;">Sign Out</button>
         </div>
     </div>
 
@@ -197,7 +197,7 @@
         <div class="sidebar" id="sidebar-panel">
             <button class="btn-close-sidebar" onclick="toggleMobileSidebar()">❌ Close Menu</button>
             
-            <button class="btn btn-logout desktop-logout" onclick="logout()">🏃 Sign Out</button>
+            <button class="btn btn-logout desktop-logout" onclick="logout()">Sign Out</button>
             
             <div class="panel-section">
                 <h3>⚠️ Broadcast Network Incident</h3>
@@ -231,9 +231,9 @@
                     </select>
                 </div>
 
-                <button id="add-hazard-btn" class="btn btn-danger">🚧 Initialize Incident Zone</button>
+                <button id="add-hazard-btn" class="btn btn-danger">🚧 Initialize</button>
                 
-                <h3 style="margin-top: 25px;">📋 Active Incident Zones</h3>
+                <h3 style="margin-top: 25px;">Active Operations:</h3>
                 <ul id="hazard-list"></ul>
             </div>
         </div>
