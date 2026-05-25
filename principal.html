@@ -219,11 +219,6 @@
                 <button id="add-route-btn" class="btn btn-success" style="width: 100%; padding: 12px;">➕ Create New Route Path</button>
                 <ul id="route-list"></ul>
             </div>
-
-            <div class="panel-section">
-                <h3>👥 Registered Students</h3>
-                <div style="font-size: 1.1rem; font-weight: bold;">Count: <span id="student-count" style="color: var(--primary);">0</span></div>
-            </div>
         </div>
         <div id="map"></div>
     </div>
@@ -338,10 +333,10 @@
                         const hazardColor = h.color || '#F56C6C';
                         const popupContent = `
                             <div class="incident-popup">
-                                <h3 style="color: ${hazardColor};">🚧 Operations Advisory: ${h.title}</h3>
+                                <h3 style="color: ${hazardColor};">🚧 Operation: ${h.title}</h3>
                                 <div class="incident-badge" style="background-color: ${hazardColor};">${h.type}</div>
                                 <div class="incident-meta">
-                                    <b>Reason / Impact:</b><br>${h.desc}<br><br>
+                                    <b>Reason:</b><br>${h.desc}<br><br>
                                     <b>Duration:</b>
                                     <span class="incident-time">${h.time}</span>
                                 </div>
@@ -385,7 +380,7 @@
                     route.coords.push(clickedPoint);
                     interactionState.mode = 'after';
                     interactionState.nodeIndex = 0;
-                    showIndicator(`Route Drawing Active: Click map to append coordinates path. Click 'Done' to finalize.`);
+                    showIndicator(`Click on the map to draw your route. Click 'Done' to finalize.`);
                     routeRef.update({ coords: route.coords });
                 } 
                 else if (interactionState.mode === 'before') {
@@ -454,7 +449,7 @@
                                         .setContent(`
                                             <div class="popup-menu">
                                                 <h4 style="margin: 0 0 5px 0; font-size: 1rem;">${route.name}</h4>
-                                                <button onclick="window.startNodeMove('${routeId}', ${index})">📍 Start Moving Node</button>
+                                                <button onclick="window.startNodeMove('${routeId}', ${index})">📍 Move Node</button>
                                                 <button onclick="window.prepareInsertion('${routeId}', ${index}, 'before')">➕ Add Point Before</button>
                                                 <button onclick="window.prepareInsertion('${routeId}', ${index}, 'after')">➕ Add Point After</button>
                                                 <button class="danger-action" onclick="window.deleteNode('${routeId}', ${index})">❌ Delete Node</button>
@@ -464,7 +459,6 @@
 
                                 nodeMarker.on('contextmenu', triggerNodeMenu);
                                 nodeMarker.on('click', (e) => {
-                                    // Separates standard mouse dragging clicks from menu initializations
                                     if (interactionState.mode) {
                                         L.DomEvent.stopPropagation(e);
                                         return;
@@ -539,7 +533,7 @@
                     document.getElementById('sidebar-panel').classList.remove('active');
                 }
                 interactionState = { mode: 'new', routeId: newId, nodeIndex: 0 };
-                showIndicator("🗺️ Tap map layout grid to begin rendering your route network nodes!");
+                showIndicator("Tap on the map to begin rendering your route.");
             }).catch(err => {
                 console.error("Firebase Error:", err);
             });
@@ -564,8 +558,6 @@
         function renderStudents(studentsData) {
             studentLayer.clearLayers();
             const studentList = Object.values(studentsData).filter(s => s.schoolId === mySchoolId || !s.schoolId);
-            const counterEl = document.getElementById('student-count');
-            if (counterEl) counterEl.innerText = studentList.length;
             
             studentList.forEach(student => {
                 L.circleMarker([student.lat, student.lng], {
