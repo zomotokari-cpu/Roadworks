@@ -101,7 +101,15 @@
         .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
 
         .btn-close-sidebar { display: none; }
-        .desktop-logout { display: none; }
+        
+        /* Ensures the logout button is blocks correctly on desktop view */
+        .desktop-logout { 
+            display: block; 
+            width: 100%;
+            padding: 12px;
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
 
         /* Responsive Flow Strategy */
         @media (max-width: 768px) {
@@ -158,6 +166,8 @@
                 font-size: 1rem;
             }
 
+            .desktop-logout { display: none; }
+
             #map { 
                 position: absolute;
                 top: 0;
@@ -197,7 +207,7 @@
     <div class="dashboard">
         <div class="sidebar" id="sidebar-panel">
             <button class="btn-close-sidebar" onclick="toggleMobileSidebar()">❌ Close Menu</button>
-            <button class="btn btn-logout desktop-logout" onclick="logout()">Sign Out</button>
+            <button class="btn btn-logout desktop-logout" onclick="logout()">🏃 Sign Out</button>
             
             <div class="panel-section">
                 <h3>School:</h3>
@@ -210,6 +220,10 @@
                 <ul id="route-list"></ul>
             </div>
 
+            <div class="panel-section">
+                <h3>👥 Registered Students</h3>
+                <div style="font-size: 1.1rem; font-weight: bold;">Count: <span id="student-count" style="color: var(--primary);">0</span></div>
+            </div>
         </div>
         <div id="map"></div>
     </div>
@@ -449,7 +463,14 @@
                                 };
 
                                 nodeMarker.on('contextmenu', triggerNodeMenu);
-                                nodeMarker.on('click', triggerNodeMenu);
+                                nodeMarker.on('click', (e) => {
+                                    // Separates standard mouse dragging clicks from menu initializations
+                                    if (interactionState.mode) {
+                                        L.DomEvent.stopPropagation(e);
+                                        return;
+                                    }
+                                    triggerNodeMenu(e);
+                                });
                             });
 
                             if (list) {
