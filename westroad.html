@@ -31,7 +31,7 @@
             padding: 20px; 
             box-sizing: border-box; 
             overflow-y: auto; 
-            z-index: 9999; /* Higher priority than leaflet map canvas */
+            z-index: 9999; 
         }
 
         #map { 
@@ -39,6 +39,11 @@
             height: 100%; 
             width: 100%; 
             z-index: 1; 
+        }
+
+        /* Top Mobile Header Navigation Bar */
+        .mobile-header {
+            display: none;
         }
 
         /* Action bar indicator across top area of map */
@@ -89,6 +94,11 @@
         .popup-menu button.danger-action { background: #fef0f0; color: var(--danger); border-color: #fde2e2; }
         select { width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #fafafa; margin-bottom: 15px; }
 
+        /* Mobile Close Overlay Button */
+        .btn-close-sidebar {
+            display: none;
+        }
+
         /* Rigid Responsive Breakpoint for Mobile and Tablets */
         @media (max-width: 768px) {
             .dashboard { 
@@ -97,34 +107,55 @@
                 position: relative;
             }
 
-            /* Transforms sidebar into a sticky mobile operation header */
-            .sidebar { 
+            /* Main navigation panel at the top */
+            .mobile-header {
                 position: fixed;
                 top: 0;
                 left: 0;
-                width: 100%; 
-                min-width: 100%; 
-                height: 70px; 
-                min-height: 70px; 
-                max-height: 70px;
-                padding: 10px 15px; 
+                width: 100%;
+                height: 70px;
+                background: #f8f9fa;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                padding: 0 15px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-                overflow: hidden;
+                z-index: 9998;
                 box-sizing: border-box;
             }
 
-            /* Hides structural desktop forms on mobile layout, keeping layout safe */
-            .panel-section { display: none; }
-
-            .btn-logout { 
-                margin: 0 !important; 
-                width: auto !important; 
-                padding: 8px 16px !important; 
-                font-size: 0.9rem !important;
+            /* Sidebar transforms into a togglable Fullscreen Overlay Menu on mobile */
+            .sidebar { 
+                position: fixed;
+                top: 0;
+                left: -100%; /* Hidden by default */
+                width: 100%; 
+                height: 100vh; 
+                transition: left 0.3s ease;
+                padding: 20px; 
+                z-index: 10005; /* Above header and map */
             }
+
+            .sidebar.active {
+                left: 0; /* Slides into view */
+            }
+
+            /* Close button inside mobile menu overlay */
+            .btn-close-sidebar {
+                display: block;
+                background: #e0e0e0;
+                color: #333;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 6px;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                width: 100%;
+                text-align: center;
+            }
+
+            .desktop-logout { display: none; }
 
             #map { 
                 position: absolute;
@@ -134,7 +165,6 @@
                 width: 100vw;
             }
 
-            /* Safely re-positions map control modules beneath navigation panel */
             .leaflet-top {
                 top: 80px !important;
             }
@@ -155,10 +185,19 @@
         <button class="btn btn-logout" onclick="window.finishDrawingAction()" style="background: #222; color: #fff; width: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.3); padding: 14px; font-size: 1rem; font-weight: bold; border-radius: 8px;">✔️ Complete / Exit Mode</button>
     </div>
 
+    <div class="mobile-header">
+        <h2 style="margin: 0; font-size: 1.1rem;">Westroad Control</h2>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn" onclick="toggleMobileSidebar()" style="background: #409EFF; color: #fff; padding: 8px 14px; font-size: 0.9rem;">📋 Toggle Form</button>
+            <button class="btn btn-logout" onclick="logout()" style="margin: 0; padding: 8px 12px; font-size: 0.9rem;">🏃 Sign Out</button>
+        </div>
+    </div>
+
     <div class="dashboard">
-        <div class="sidebar">
-            <h2 style="margin: 0; font-size: 1.2rem;" class="mobile-title">Westroad Control</h2>
-            <button class="btn btn-logout" onclick="logout()">🏃 Sign Out</button>
+        <div class="sidebar" id="sidebar-panel">
+            <button class="btn-close-sidebar" onclick="toggleMobileSidebar()">❌ Close Menu</button>
+            
+            <button class="btn btn-logout desktop-logout" onclick="logout()">🏃 Sign Out</button>
             
             <div class="panel-section">
                 <h3>⚠️ Broadcast Network Incident</h3>
@@ -193,6 +232,8 @@
                 </div>
 
                 <button id="add-hazard-btn" class="btn btn-danger">🚧 Initialize Incident Zone</button>
+                
+                <h3 style="margin-top: 25px;">📋 Active Incident Zones</h3>
                 <ul id="hazard-list"></ul>
             </div>
         </div>
@@ -209,6 +250,12 @@
         let interactionState = { mode: null, hazardId: null, nodeIndex: null };
         let movingMarkerRef = null;
 
+        // Mobile Sidebar Toggle Orchestration Logic
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('sidebar-panel');
+            sidebar.classList.toggle('active');
+        }
+
         auth.onAuthStateChanged(user => {
             if (!user) {
                 window.location.href = "index.html";
@@ -218,10 +265,8 @@
                 hazardLinesLayer = L.layerGroup().addTo(map);
                 hazardNodesLayer = L.layerGroup().addTo(map);
 
-                // Main map click handles standard mapping additions
                 map.on('click', handleMapClick);
 
-                // Desktop right-click escapes active mapping modifications
                 map.on('contextmenu', (e) => {
                     if (interactionState.mode && !e.target.options?.color) {
                         window.finishDrawingAction();
@@ -297,23 +342,20 @@
                 const hazard = hazardsData[hazardId];
                 if (!hazard.coords) hazard.coords = [];
 
-                // Render trace paths
                 if (hazard.coords.length >= 2) {
                     L.polyline(hazard.coords, { color: hazard.color, weight: 6, opacity: 0.85 }).addTo(hazardLinesLayer);
                 }
 
-                // Render clickable/touchable anchor joints
                 hazard.coords.forEach((coord, index) => {
                     const isStart = index === 0;
                     const nodeMarker = L.circleMarker(coord, {
-                        radius: isStart ? 9 : 7, // Scaled slightly higher for easier touch target sizing
+                        radius: isStart ? 9 : 7, 
                         fillColor: '#ffffff', 
                         color: hazard.color, 
                         weight: 4, 
                         fillOpacity: 1
                     }).addTo(hazardNodesLayer);
 
-                    // Unified popup orchestrator function
                     const triggerNodeMenu = (e) => {
                         L.DomEvent.preventDefault(e);
                         L.DomEvent.stopPropagation(e);
@@ -321,7 +363,6 @@
 
                         window.currentSelectedMarker = nodeMarker;
                         
-                        // Centering logic offset to avoid mobile top navbar clash
                         if (window.innerWidth <= 768) {
                             const targetPoint = map.project(e.latlng).subtract([0, 90]);
                             map.panTo(map.unproject(targetPoint), { animate: true });
@@ -340,19 +381,21 @@
                             `).openOn(map);
                     };
 
-                    // Desktop traditional handler
                     nodeMarker.on('contextmenu', triggerNodeMenu);
-                    // Mobile direct tap handler - acts as a backup toggle strategy for touch pads
                     nodeMarker.on('click', triggerNodeMenu);
                 });
 
-                // Construct Desktop Sidebar List Elements
                 const li = document.createElement('li');
                 li.style.borderLeft = `5px solid ${hazard.color}`;
                 li.innerHTML = `<span><b>${hazard.title}</b> (${hazard.type})</span> <span class="delete-btn">❌</span>`;
                 
                 li.onclick = () => { 
-                    if(hazard.coords.length > 0) map.panTo(hazard.coords[0]); 
+                    if(hazard.coords.length > 0) {
+                        if (window.innerWidth <= 768) {
+                            document.getElementById('sidebar-panel').classList.remove('active');
+                        }
+                        map.panTo(hazard.coords[0]); 
+                    }
                 };
                 
                 li.querySelector('.delete-btn').onclick = (e) => {
@@ -365,7 +408,6 @@
             });
         }
 
-        // Node displacement pipeline
         window.startNodeMove = function(hazardId, index) {
             map.closePopup();
             interactionState = { mode: 'move', hazardId: hazardId, nodeIndex: index };
@@ -386,14 +428,12 @@
             });
         }
 
-        // Path insertion sequencer configuration
         window.prepareInsertion = function(hazardId, index, position) {
             map.closePopup();
             interactionState = { mode: position, hazardId: hazardId, nodeIndex: index };
             showIndicator(position === 'before' ? "Tap map to inject node point BEFORE selected track..." : "Tap map to inject node point AFTER selected track...");
         };
 
-        // Initialize click interceptor routine
         document.getElementById('add-hazard-btn').onclick = function() {
             const title = document.getElementById('h-title').value;
             const desc = document.getElementById('h-desc').value;
@@ -419,12 +459,16 @@
                 document.getElementById('h-time').value = '';
                 document.getElementById('h-type').value = '';
                 
+                // Automatically hide mobile overlay menu to view map and draw coordinates
+                if (window.innerWidth <= 768) {
+                    document.getElementById('sidebar-panel').classList.remove('active');
+                }
+
                 interactionState = { mode: 'new', hazardId: newId, nodeIndex: 0 };
                 showIndicator("🗺️ Click/Tap map surface grid to begin drawing your zone path lines!");
             });
         };
 
-        // Individual node point drop function
         window.deleteNode = function(hazardId, index) {
             const hazardRef = db.ref(`hazards/${hazardId}`);
             hazardRef.once('value').then(snap => {
@@ -441,18 +485,17 @@
             });
         };
 
-        // Helper interface visual controls configuration
         function showIndicator(text) {
             const ind = document.getElementById('action-indicator');
             ind.innerText = text;
             ind.style.display = 'block';
-            document.getElementById('mobile-controls').style.display = 'block'; // Shows the complete button
+            document.getElementById('mobile-controls').style.display = 'block';
         }
 
         function resetInteraction() {
             interactionState = { mode: null, hazardId: null, nodeIndex: null };
             document.getElementById('action-indicator').style.display = 'none';
-            document.getElementById('mobile-controls').style.display = 'none'; // Hides complete button safely
+            document.getElementById('mobile-controls').style.display = 'none';
         }
 
         window.finishDrawingAction = function() {
