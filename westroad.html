@@ -359,6 +359,8 @@
                     const triggerNodeMenu = (e) => {
                         L.DomEvent.preventDefault(e);
                         L.DomEvent.stopPropagation(e);
+                        
+                        // Prevent loading the popup menu if user is actively scaling/moving items
                         if (interactionState.mode) return;
 
                         window.currentSelectedMarker = nodeMarker;
@@ -382,7 +384,14 @@
                     };
 
                     nodeMarker.on('contextmenu', triggerNodeMenu);
-                    nodeMarker.on('click', triggerNodeMenu);
+                    nodeMarker.on('click', (e) => {
+                        // Prevent conflict if device is in desktop mode and mouse dragging is active
+                        if (interactionState.mode) {
+                            L.DomEvent.stopPropagation(e);
+                            return;
+                        }
+                        triggerNodeMenu(e);
+                    });
                 });
 
                 const li = document.createElement('li');
@@ -459,7 +468,6 @@
                 document.getElementById('h-time').value = '';
                 document.getElementById('h-type').value = '';
                 
-                // Automatically hide mobile overlay menu to view map and draw coordinates
                 if (window.innerWidth <= 768) {
                     document.getElementById('sidebar-panel').classList.remove('active');
                 }
