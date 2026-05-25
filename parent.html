@@ -46,7 +46,7 @@
             }
             #map { 
                 position: absolute;
-                top: 70px; /* Shifts the entire map view below the header bar */
+                top: 70px; /* Rigidly forces map container below header */
                 left: 0;
                 height: calc(100vh - 70px);
                 width: 100%;
@@ -88,9 +88,15 @@
             } else {
                 initMap('map');
                 
+                // Safe internal panning that prevents HTML-container displacement
                 map.on('popupopen', function(e) {
                     if (window.innerWidth <= 768) {
-                        map.panTo(e.popup.getLatLng());
+                        const popupLatLng = e.popup.getLatLng();
+                        if (popupLatLng) {
+                            // Slightly offset map center to account for popup height on mobile
+                            const targetPoint = map.project(popupLatLng).subtract([0, 100]);
+                            map.panTo(map.unproject(targetPoint), { animate: true });
+                        }
                     }
                 });
 
@@ -108,7 +114,6 @@
             }
         });
 
-        // Helper function for dynamic scaling based on zoom level
         function getScales(zoom) {
             const factor = Math.pow(1.4, zoom - 13);
             return {
@@ -131,7 +136,6 @@
             });
         }
 
-        // Generates the SVG warning triangle in the specific incident color
         function createHazardIcon(color, size) {
             return L.divIcon({
                 html: `
@@ -147,7 +151,6 @@
             });
         }
 
-        // Fetches ALL routes from the database (iterates through all schools)
         function listenToAllSchoolRoutes() {
             db.ref('schools').on('value', snapshot => {
                 routeLinesLayer.clearLayers();
@@ -163,7 +166,7 @@
                                     weight: 4,
                                     opacity: 0.85
                                 }).addTo(routeLinesLayer).bindPopup(`<b>Bus Route:</b> ${route.name}`, {
-                                    autoPanPaddingTopLeft: L.point(10, 20)
+                                    autoPan: false // Disabled default autoPan to prevent absolute container shifts
                                 });
                             }
                         });
@@ -172,7 +175,6 @@
             });
         }
 
-        // Fetches all active road closures / hazards
         function listenToGlobalHazards() {
             db.ref('hazards').on('value', snapshot => {
                 publicHazardLayer.clearLayers();
@@ -195,7 +197,7 @@
                         `;
 
                         const popupOptions = {
-                            autoPanPaddingTopLeft: L.point(10, 20)
+                            autoPan: false // Disabled default autoPan to prevent absolute container shifts
                         };
 
                         L.polyline(h.coords, { 
