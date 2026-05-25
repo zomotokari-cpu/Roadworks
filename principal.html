@@ -2,43 +2,202 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>School Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>School Portal - Administration</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="style.css">
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
-        .dashboard { display: flex; height: 100vh; width: 100vw; }
-        .sidebar { width: 320px; min-width: 320px; background: #f8f9fa; padding: 20px; box-sizing: border-box; overflow-y: auto; }
-        #map { flex-grow: 1; height: 100%; width: 100%; }
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            width: 100%; 
+            overflow: hidden; 
+            background: #f8f9fa;
+        }
 
-        #route-list { list-style: none; margin-top: 10px; }
+        /* Desktop Layout Flexbox Structure */
+        .dashboard { 
+            display: flex; 
+            height: 100vh; 
+            width: 100vw; 
+            flex-direction: row; 
+        }
+
+        .sidebar { 
+            width: 320px; 
+            min-width: 320px; 
+            background: #f8f9fa; 
+            padding: 20px; 
+            box-sizing: border-box; 
+            overflow-y: auto; 
+            z-index: 9999; 
+        }
+
+        #map { 
+            flex-grow: 1; 
+            height: 100%; 
+            width: 100%; 
+            z-index: 1; 
+        }
+
+        /* Top Mobile Header Banner */
+        .mobile-header {
+            display: none;
+        }
+
+        /* Action banner indicator across top area of map canvas */
+        #action-indicator {
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-family: sans-serif;
+            font-weight: 500;
+            pointer-events: none;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+
+        /* Mobile controls overlay tray for finalizing route maps adjustments */
+        #mobile-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10000;
+            display: none;
+            width: calc(100% - 40px);
+            max-width: 340px;
+        }
+
+        #route-list { list-style: none; margin-top: 10px; padding: 0; }
         #route-list li { 
             display: flex; justify-content: space-between; align-items: center;
-            background: #fff; padding: 10px; margin-bottom: 6px; border-radius: 6px;
+            background: #fff; padding: 12px; margin-bottom: 8px; border-radius: 6px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05); cursor: pointer; transition: transform 0.1s;
         }
         #route-list li:active { transform: scale(0.98); }
-        .delete-btn { color: var(--danger); font-weight: bold; padding: 4px 8px; cursor: pointer; }
+        .delete-btn { color: var(--danger); font-weight: bold; padding: 4px 8px; cursor: pointer; font-size: 1.1rem; }
+        
         .popup-menu button { 
-            display: block; width: 100%; padding: 6px; margin-top: 4px; 
-            border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; 
+            display: block; width: 100%; padding: 8px; margin-top: 6px; font-size: 0.9rem;
+            border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; text-align: left;
         }
         .popup-menu button.danger-action { background: #fef0f0; color: var(--danger); border-color: #fde2e2; }
 
-        /* Styling für die Info-Box im Incident-Popup */
+        /* Styling for the info box inside map popups */
         .incident-popup { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-width: 220px; }
         .incident-popup h3 { margin: 0 0 8px 0; font-size: 1.1rem; display: flex; align-items: center; gap: 5px; }
         .incident-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; margin-bottom: 8px; }
         .incident-meta { font-size: 0.85rem; color: #333; line-height: 1.4; }
         .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
+
+        .btn-close-sidebar { display: none; }
+        .desktop-logout { display: none; }
+
+        /* Responsive Flow Strategy */
+        @media (max-width: 768px) {
+            .dashboard { 
+                flex-direction: column; 
+                height: 100vh;
+                position: relative;
+            }
+
+            .mobile-header {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 70px;
+                background: #f8f9fa;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 15px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+                z-index: 9998;
+                box-sizing: border-box;
+            }
+
+            /* Sidebar converts into togglable fullscreen control overlay sliding panel */
+            .sidebar { 
+                position: fixed;
+                top: 0;
+                left: -100%; 
+                width: 100%; 
+                height: 100vh; 
+                transition: left 0.3s ease;
+                padding: 20px; 
+                z-index: 10005; 
+            }
+
+            .sidebar.active {
+                left: 0;
+            }
+
+            .btn-close-sidebar {
+                display: block;
+                background: #e0e0e0;
+                color: #333;
+                border: none;
+                padding: 12px;
+                border-radius: 6px;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                width: 100%;
+                text-align: center;
+                font-size: 1rem;
+            }
+
+            #map { 
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: 100vh; 
+                width: 100vw;
+            }
+
+            .leaflet-top {
+                top: 80px !important;
+            }
+
+            #action-indicator {
+                top: 85px;
+                width: calc(100% - 30px);
+                font-size: 0.85rem;
+                padding: 8px 12px;
+            }
+        }
     </style>
 </head>
 <body>
     <div id="action-indicator">Drawing Active</div>
+    
+    <div id="mobile-controls">
+        <button class="btn btn-logout" onclick="window.finishDrawingAction()" style="background: #222; color: #fff; width: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.3); padding: 14px; font-size: 1rem; font-weight: bold; border-radius: 8px;">✔️ Complete / Exit Mode</button>
+    </div>
+
+    <div class="mobile-header">
+        <h2 style="margin: 0; font-size: 1.1rem;">School Portal</h2>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn" onclick="toggleMobileSidebar()" style="background: #409EFF; color: #fff; padding: 8px 14px; font-size: 0.9rem;">📋 Toggle Forms</button>
+            <button class="btn btn-logout" onclick="logout()" style="margin: 0; padding: 8px 12px; font-size: 0.9rem;">🏃 Sign Out</button>
+        </div>
+    </div>
+
     <div class="dashboard">
-        <div class="sidebar">
-            <button class="btn btn-logout" onclick="logout()">🏃 Sign Out</button>
+        <div class="sidebar" id="sidebar-panel">
+            <button class="btn-close-sidebar" onclick="toggleMobileSidebar()">❌ Close Menu</button>
+            <button class="btn btn-logout desktop-logout" onclick="logout()">🏃 Sign Out</button>
             
             <div class="panel-section">
                 <h3>🏫 Institutional Domain</h3>
@@ -47,7 +206,7 @@
 
             <div class="panel-section">
                 <h3>🚍 Route Builder</h3>
-                <button id="add-route-btn" class="btn btn-success">➕ Create New Route Path</button>
+                <button id="add-route-btn" class="btn btn-success" style="width: 100%; padding: 12px;">➕ Create New Route Path</button>
                 <ul id="route-list"></ul>
             </div>
 
@@ -71,6 +230,11 @@
         let interactionState = { mode: null, routeId: null, nodeIndex: null };
         let movingMarkerRef = null;
 
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('sidebar-panel');
+            sidebar.classList.toggle('active');
+        }
+
         auth.onAuthStateChanged(user => {
             if (!user) {
                 window.location.href = "index.html";
@@ -86,12 +250,7 @@
 
                 map.on('contextmenu', (e) => {
                     if (interactionState.mode && !e.target.options?.color) {
-                        if (interactionState.mode === 'move') {
-                            map.off('mousemove', handleMarkerFollow);
-                            movingMarkerRef = null;
-                        }
-                        resetInteraction();
-                        listenToSchoolData();
+                        window.finishDrawingAction();
                     }
                 });
 
@@ -149,7 +308,6 @@
         function listenToSchoolData() {
             if (!mySchoolId) return;
 
-            // GLOBAL zuhören auf alle Schulen, um alle Linien anzuzeigen
             db.ref('schools').on('value', snapshot => {
                 const schoolsData = snapshot.val() || {};
                 renderAllSchoolsRoutes(schoolsData);
@@ -217,7 +375,7 @@
                     route.coords.push(clickedPoint);
                     interactionState.mode = 'after';
                     interactionState.nodeIndex = 0;
-                    showIndicator(`Route-Bau aktiv: Klicke weiter, um Linienpunkte hinzuzufügen. Rechtsklick zum Beenden.`);
+                    showIndicator(`Route Drawing Active: Click map to append coordinates path. Click 'Done' to finalize.`);
                     routeRef.update({ coords: route.coords });
                 } 
                 else if (interactionState.mode === 'before') {
@@ -240,7 +398,6 @@
             const list = document.getElementById('route-list');
             if (list) list.innerHTML = '';
 
-            // Iteriere über ALLE Schulen aus der Datenbank
             Object.keys(schoolsData).forEach(schoolId => {
                 const school = schoolsData[schoolId];
                 const isMySchool = schoolId === mySchoolId;
@@ -251,60 +408,71 @@
                         const route = school.routes[routeId];
                         if (!route.coords) route.coords = [];
 
-                        // 1. Linienzug auf Karte rendern (für alle Schulen sichtbar)
                         if (route.coords.length >= 2) {
                             L.polyline(route.coords, { 
                                 color: route.color, 
                                 weight: 5, 
-                                opacity: isMySchool ? 0.85 : 0.4 // Fremde Schulen leicht transparent machen zur Unterscheidung
+                                opacity: isMySchool ? 0.85 : 0.4 
                             }).addTo(routeLinesLayer).bindPopup(`<b>${schoolName}</b><br>🚍 Route: ${route.name}`);
                         }
 
-                        // 2. Bearbeitungs-Nodes NUR zeichnen, wenn die Route der EIGENEN Schule gehört
                         if (isMySchool) {
                             route.coords.forEach((coord, index) => {
                                 const isStart = index === 0;
                                 const nodeMarker = L.circleMarker(coord, {
-                                    radius: isStart ? 8 : 6, 
+                                    radius: isStart ? 9 : 7, 
                                     fillColor: isStart ? '#67C23A' : '#ffffff', 
                                     color: route.color, 
-                                    weight: 3, 
+                                    weight: 4, 
                                     fillOpacity: 1
                                 }).addTo(routeNodesLayer);
 
-                                nodeMarker.on('contextmenu', (e) => {
+                                const triggerNodeMenu = (e) => {
                                     L.DomEvent.preventDefault(e);
                                     L.DomEvent.stopPropagation(e);
                                     if (interactionState.mode) return;
 
                                     window.currentSelectedMarker = nodeMarker;
+                                    
+                                    if (window.innerWidth <= 768) {
+                                        const targetPoint = map.project(e.latlng).subtract([0, 90]);
+                                        map.panTo(map.unproject(targetPoint), { animate: true });
+                                    }
+
                                     L.popup()
                                         .setLatLng(e.latlng)
                                         .setContent(`
                                             <div class="popup-menu">
-                                                <h4 style="margin-bottom: 5px;">${route.name}</h4>
-                                                <button onclick="window.startNodeMove('${routeId}', ${index})">📍 Start Moving</button>
+                                                <h4 style="margin: 0 0 5px 0; font-size: 1rem;">${route.name}</h4>
+                                                <button onclick="window.startNodeMove('${routeId}', ${index})">📍 Start Moving Node</button>
                                                 <button onclick="window.prepareInsertion('${routeId}', ${index}, 'before')">➕ Add Point Before</button>
                                                 <button onclick="window.prepareInsertion('${routeId}', ${index}, 'after')">➕ Add Point After</button>
                                                 <button class="danger-action" onclick="window.deleteNode('${routeId}', ${index})">❌ Delete Node</button>
                                             </div>
                                         `).openOn(map);
-                                });
+                                };
+
+                                nodeMarker.on('contextmenu', triggerNodeMenu);
+                                nodeMarker.on('click', triggerNodeMenu);
                             });
 
-                            // Sidebar Element NUR für die eigenen Routen erstellen
                             if (list) {
                                 const li = document.createElement('li');
                                 li.style.borderLeft = `5px solid ${route.color}`;
                                 li.innerHTML = `<span><b>${route.name}</b> (${route.coords.length} pts.)</span> <span class="delete-btn">❌</span>`;
                                 
                                 li.onclick = () => { 
-                                    if(route.coords.length > 0) map.panTo(route.coords[0]); 
+                                    if(route.coords.length > 0) {
+                                        if (window.innerWidth <= 768) {
+                                            document.getElementById('sidebar-panel').classList.remove('active');
+                                        }
+                                        map.panTo(route.coords[0]); 
+                                    }
                                 };
                                 
                                 li.querySelector('.delete-btn').onclick = (e) => {
                                     e.stopPropagation();
-                                    if(confirm(`Route "${route.name}" komplett löschen?`)) {
+                                    if(confirm(`Delete route "${route.name}" completely?`)) {
                                         db.ref(`schools/${mySchoolId}/routes/${routeId}`).remove();
                                     }
                                 };
@@ -320,7 +488,7 @@
             map.closePopup();
             interactionState = { mode: 'move', routeId: routeId, nodeIndex: index };
             movingMarkerRef = window.currentSelectedMarker;
-            showIndicator("📍 Punkt folgt Cursor. Links-Klick zum Festsetzen!");
+            showIndicator("📍 Mode: Moving Point. Click/Tap map surface grid to pin location.");
             map.on('mousemove', handleMarkerFollow);
         };
 
@@ -339,19 +507,22 @@
         window.prepareInsertion = function(routeId, index, position) {
             map.closePopup();
             interactionState = { mode: position, routeId: routeId, nodeIndex: index };
-            showIndicator(position === 'before' ? "Klicke auf die Karte, um Punkt DAVOR einzufügen..." : "Klicke auf die Karte, um Punkt DANACH einzufügen...");
+            showIndicator(position === 'before' ? "Tap map to insert track node point BEFORE selected element..." : "Tap map to insert track node point AFTER selected element...");
         };
 
         document.getElementById('add-route-btn').onclick = function() {
-            const rName = prompt("Routen-Name:") || "Neue Route";
+            const rName = prompt("Route Profile Name:") || "New Route Path";
             const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16);
             
             const newRouteRef = db.ref(`schools/${mySchoolId}/routes`).push();
             const newId = newRouteRef.key;
             
             newRouteRef.set({ name: rName, coords: [], color: randomColor }).then(() => {
+                if (window.innerWidth <= 768) {
+                    document.getElementById('sidebar-panel').classList.remove('active');
+                }
                 interactionState = { mode: 'new', routeId: newId, nodeIndex: 0 };
-                showIndicator("🗺️ Klicke auf die Karte, um den Startpunkt zu setzen!");
+                showIndicator("🗺️ Tap map layout grid to begin rendering your route network nodes!");
             }).catch(err => {
                 console.error("Firebase Error:", err);
             });
@@ -392,13 +563,24 @@
                 ind.innerText = text;
                 ind.style.display = 'block';
             }
+            document.getElementById('mobile-controls').style.display = 'block';
         }
 
         function resetInteraction() {
             interactionState = { mode: null, routeId: null, nodeIndex: null };
             const ind = document.getElementById('action-indicator');
             if (ind) ind.style.display = 'none';
+            document.getElementById('mobile-controls').style.display = 'none';
         }
+
+        window.finishDrawingAction = function() {
+            if (interactionState.mode === 'move') {
+                map.off('mousemove', handleMarkerFollow);
+                movingMarkerRef = null;
+            }
+            resetInteraction();
+            listenToSchoolData();
+        };
     </script>
 </body>
 </html>
