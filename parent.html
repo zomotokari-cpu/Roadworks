@@ -3,30 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Map</title>
+    <title>Live Map - Parent Portal</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="style.css">
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
-        .dashboard { display: flex; height: 100vh; width: 100vw; }
-        .sidebar { width: 320px; min-width: 320px; background: #f8f9fa; padding: 20px; box-sizing: border-box; overflow-y: auto; }
-        #map { flex-grow: 1; height: 100%; width: 100%; }
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
+        .dashboard { display: flex; height: 100vh; width: 100vw; flex-direction: row; }
+        .sidebar { width: 320px; min-width: 320px; background: #f8f9fa; padding: 20px; box-sizing: border-box; overflow-y: auto; z-index: 1000; }
+        #map { flex-grow: 1; height: 100%; width: 100%; z-index: 1; }
         
-        /* Styling für die Info-Box im Popup */
+        /* Styling for the info box inside map popups */
         .incident-popup { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-width: 220px; }
         .incident-popup h3 { margin: 0 0 8px 0; font-size: 1.1rem; display: flex; align-items: center; gap: 5px; }
         .incident-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; margin-bottom: 8px; }
         .incident-meta { font-size: 0.85rem; color: #333; line-height: 1.4; }
         .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
+
+        /* Responsive Breakpoint for Mobile and Tablet Devices */
+        @media (max-width: 768px) {
+            .dashboard { flex-direction: column; }
+            .sidebar { 
+                width: 100%; 
+                min-width: 100%; 
+                height: auto; 
+                max-height: 30vh; 
+                padding: 15px; 
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            }
+            #map { height: 70vh; }
+            .leaflet-popup-content-wrapper { padding: 5px; }
+            .incident-popup { min-width: 180px; }
+        }
     </style>
 </head>
 <body>
     <div class="dashboard">
         <div class="sidebar">
-            <button class="btn btn-logout" onclick="logout()">🏃 Disconnect Portal</button>
-            <div class="panel-section">
+            <button class="btn btn-logout" onclick="logout()" style="width: 100%; padding: 12px; font-size: 1rem;">🏃 Disconnect Portal</button>
+            <div class="panel-section" style="margin-top: 15px;">
                 <h3>ℹ️ West Coast Overview</h3>
-                <p style="font-size: 0.9rem; line-height: 1.4; color: var(--text);">
+                <p style="font-size: 0.9rem; line-height: 1.4; color: var(--text); margin-top: 8px;">
                     Welcome back! Below you see all real-time bus routes and active road hazard advisories managed by Westroad Operations.
                 </p>
             </div>
@@ -48,22 +64,22 @@
             } else {
                 initMap('map');
 
-                // Layer-Gruppen initialisieren und zur Karte hinzufügen
+                // Initialize layer groups and add them to the map
                 routeLinesLayer = L.layerGroup().addTo(map);
                 publicHazardLayer = L.layerGroup().addTo(map);
 
-                // 1. ALLE Busrouten von ALLEN Schulen laden
+                // 1. Load ALL bus routes from ALL schools
                 listenToAllSchoolRoutes();
 
-                // 2. ALLE Gefahrenstellen laden (Durchgezogene Linie + 1 zentrales Symbol)
+                // 2. Load ALL hazard zones (Solid line + 1 central icon)
                 listenToGlobalHazards();
 
-                // Zoom-Listener für dynamische Symbole und Linienstärken
+                // Zoom listener for dynamic icons and line scaling
                 map.on('zoomend', updateParentHazardScales);
             }
         });
 
-        // Hilfsfunktion für dynamische Skalierung basierend auf dem Zoom-Level
+        // Helper function for dynamic scaling based on zoom level
         function getScales(zoom) {
             const factor = Math.pow(1.4, zoom - 13);
             return {
@@ -76,7 +92,7 @@
             const currentZoom = map.getZoom();
             const scales = getScales(currentZoom);
 
-            // Gefahrenstellen-Layer skalieren
+            // Scale the hazard layer items
             publicHazardLayer.eachLayer(layer => {
                 if (layer instanceof L.Polyline) {
                     layer.setStyle({ weight: scales.lineWidth });
@@ -87,7 +103,7 @@
             });
         }
 
-        // Generiert das SVG-Warn-Dreieck in der jeweiligen Incident-Farbe
+        // Generates the SVG warning triangle in the specific incident color
         function createHazardIcon(color, size) {
             return L.divIcon({
                 html: `
@@ -103,7 +119,7 @@
             });
         }
 
-        // Holt ALLE Routen aus der Datenbank (iteriert durch alle Schulen)
+        // Fetches ALL routes from the database (iterates through all schools)
         function listenToAllSchoolRoutes() {
             db.ref('schools').on('value', snapshot => {
                 routeLinesLayer.clearLayers();
@@ -118,7 +134,7 @@
                                     color: route.color || '#409EFF',
                                     weight: 4,
                                     opacity: 0.85
-                                }).addTo(routeLinesLayer).bindPopup(`<b>Bus-Route:</b> ${route.name}`);
+                                }).addTo(routeLinesLayer).bindPopup(`<b>Bus Route:</b> ${route.name}`);
                             }
                         });
                     }
@@ -126,7 +142,7 @@
             });
         }
 
-        // Holt alle aktiven Straßensperrungen / Hazards
+        // Fetches all active road closures / hazards
         function listenToGlobalHazards() {
             db.ref('hazards').on('value', snapshot => {
                 publicHazardLayer.clearLayers();
@@ -138,24 +154,24 @@
                         const hazardColor = h.color || '#F56C6C';
                         const popupContent = `
                             <div class="incident-popup">
-                                <h3 style="color: ${hazardColor};">🚧 Straßensperrung: ${h.title}</h3>
+                                <h3 style="color: ${hazardColor};">🚧 Road Closure: ${h.title}</h3>
                                 <div class="incident-badge" style="background-color: ${hazardColor};">${h.type}</div>
                                 <div class="incident-meta">
-                                    <b>Auswirkung:</b><br>${h.desc}<br><br>
-                                    <b>Zeitraum:</b>
+                                    <b>Impact:</b><br>${h.desc}<br><br>
+                                    <b>Timeframe:</b>
                                     <span class="incident-time">${h.time}</span>
                                 </div>
                             </div>
                         `;
 
-                        // Durchgezogene Linie für das Problem
+                        // Solid line tracking the hazard zone
                         L.polyline(h.coords, { 
                             color: hazardColor, 
                             weight: scales.lineWidth, 
                             opacity: 0.85 
                         }).addTo(publicHazardLayer).bindPopup(popupContent);
 
-                        // Nur EIN einzelnes Warnsymbol am ersten Punkt der Linie
+                        // Exactly ONE warning icon at the start coordinate of the polyline
                         L.marker(h.coords[0], {
                             icon: createHazardIcon(hazardColor, scales.iconSize),
                             hazardColor: hazardColor
