@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Portal</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+        .dashboard { display: flex; height: 100vh; width: 100vw; }
+        .sidebar { width: 320px; min-width: 320px; background: #f8f9fa; padding: 20px; box-sizing: border-box; overflow-y: auto; }
+        #map { flex-grow: 1; height: 100%; width: 100%; }
+
+        #route-list { list-style: none; margin-top: 10px; }
+        #route-list li { 
+            display: flex; justify-content: space-between; align-items: center;
+            background: #fff; padding: 10px; margin-bottom: 6px; border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); cursor: pointer; transition: transform 0.1s;
+        }
+        #route-list li:active { transform: scale(0.98); }
+        .delete-btn { color: var(--danger); font-weight: bold; padding: 4px 8px; cursor: pointer; }
+        .popup-menu button { 
+            display: block; width: 100%; padding: 6px; margin-top: 4px; 
+            border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; 
+        }
+        .popup-menu button.danger-action { background: #fef0f0; color: var(--danger); border-color: #fde2e2; }
+
+        /* Styling für die Info-Box im Incident-Popup */
+        .incident-popup { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-width: 220px; }
+        .incident-popup h3 { margin: 0 0 8px 0; font-size: 1.1rem; display: flex; align-items: center; gap: 5px; }
+        .incident-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; margin-bottom: 8px; }
+        .incident-meta { font-size: 0.85rem; color: #333; line-height: 1.4; }
+        .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
+    </style>
+</head>
+<body>
+    <div id="action-indicator">Drawing Active</div>
+    <div class="dashboard">
+        <div class="sidebar">
+            <button class="btn btn-logout" onclick="logout()">🏃 Sign Out</button>
+            
+            <div class="panel-section">
+                <h3>🏫 Institutional Domain</h3>
+                <div id="school-info" style="font-weight: 700; color: var(--primary); margin-top: 5px;">Authenticating...</div>
+            </div>
+
+            <div class="panel-section">
+                <h3>🚍 Route Builder</h3>
+                <button id="add-route-btn" class="btn btn-success">➕ Create New Route Path</button>
+                <ul id="route-list"></ul>
+            </div>
+
+            <div class="panel-section">
+                <h3>👥 Registered Students</h3>
+                <div style="font-size: 1.1rem; font-weight: bold;">Count: <span id="student-count" style="color: var(--primary);">0</span></div>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="app.js"></script>
+    <script>
+        let routeLinesLayer, routeNodesLayer, studentLayer, publicHazardLayer;
+        let mySchoolId = null;
+
+        let interactionState = { mode: null, routeId: null, nodeIndex: null };
+        let movingMarkerRef = null;
+
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                window.location.href = "index.html";
+            } else { 
+                initMap('map'); 
+                
+                routeLinesLayer = L.layerGroup().addTo(map);
+                routeNodesLayer = L.layerGroup().addTo(map);
+                studentLayer = L.layerGroup().addTo(map);
+                publicHazardLayer = L.layerGroup().addTo(map); 
+
+                map.on('click', handleMapClick);
+
+                map.on('contextmenu', (e) => {
+                    if (interactionState.mode && !e.target.options?.color) {
+                        if (interactionState.mode === 'move') {
+                            map.off('mousemove', handleMarkerFollow);
+                            movingMarkerRef = null;
+                        }
+                        resetInteraction();
+                        listenToSchoolData();
+                    }
+                });
+
+                db.ref('users/' + user.uid).once('value').then(snap => {
+                    const userData = snap.val();
+                    mySchoolId = userData.schoolId;
+                    const schoolInfoEl = document.getElementById('school-info');
+                    if (schoolInfoEl && mySchoolId) {
+                        schoolInfoEl.innerText = mySchoolId.toUpperCase().replace("-", " ");
+                    }
+                    listenToSchoolData();
+                });
+
+                map.on('zoomend', updatePrincipalHazardScales);
+            }
+        });
+
+        function getScales(zoom) {
+            const factor = Math.pow(1.4, zoom - 13);
+            return {
+                lineWidth: Math.max(2, Math.min(12, 6 * factor)),
+                iconSize: Math.max(16, Math.min(42, 24 * factor))
+            };
+        }
+
+        function updatePrincipalHazardScales() {
+            const currentZoom = map.getZoom();
+            const scales = getScales(currentZoom);
+
+            publicHazardLayer.eachLayer(layer => {
+                if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+                    layer.setStyle({ weight: scales.lineWidth });
+                } else if (layer instanceof L.Marker && layer.options.icon) {
+                    const color = layer.options.hazardColor || '#F56C6C';
+                    layer.setIcon(createHazardIcon(color, scales.iconSize));
+                }
+            });
+        }
+
+        function createHazardIcon(color, size) {
+            return L.divIcon({
+                html: `
+                    <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L1 21H23L12 2Z" fill="${color}" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M12 9V14" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="12" cy="18" r="1" fill="#ffffff"/>
+                    </svg>
+                `,
+                className: 'custom-hazard-marker',
+                iconSize: [size, size],
+                iconAnchor: [size / 2, size]
+            });
+        }
+
+        function listenToSchoolData() {
+            if (!mySchoolId) return;
+
+            // GLOBAL zuhören auf alle Schulen, um alle Linien anzuzeigen
+            db.ref('schools').on('value', snapshot => {
+                const schoolsData = snapshot.val() || {};
+                renderAllSchoolsRoutes(schoolsData);
+            });
+
+            db.ref('students').on('value', snapshot => {
+                const studentsData = snapshot.val() || {};
+                renderStudents(studentsData);
+            });
+
+            db.ref('hazards').on('value', snapshot => {
+                publicHazardLayer.clearLayers();
+                const hazardsData = snapshot.val() || {};
+                const scales = getScales(map.getZoom());
+
+                Object.values(hazardsData).forEach(h => {
+                    if (h.coords && h.coords.length >= 2) {
+                        const hazardColor = h.color || '#F56C6C';
+                        const popupContent = `
+                            <div class="incident-popup">
+                                <h3 style="color: ${hazardColor};">🚧 Operations Advisory: ${h.title}</h3>
+                                <div class="incident-badge" style="background-color: ${hazardColor};">${h.type}</div>
+                                <div class="incident-meta">
+                                    <b>Reason / Impact:</b><br>${h.desc}<br><br>
+                                    <b>Duration:</b>
+                                    <span class="incident-time">${h.time}</span>
+                                </div>
+                            </div>
+                        `;
+
+                        L.polyline(h.coords, { 
+                            color: hazardColor, 
+                            weight: scales.lineWidth, 
+                            opacity: 0.85 
+                        }).addTo(publicHazardLayer).bindPopup(popupContent);
+
+                        L.marker(h.coords[0], {
+                            icon: createHazardIcon(hazardColor, scales.iconSize),
+                            hazardColor: hazardColor
+                        }).addTo(publicHazardLayer).bindPopup(popupContent);
+                    }
+                });
+            });
+        }
+
+        function handleMapClick(e) {
+            if (!interactionState.mode) return;
+            
+            const clickedPoint = [e.latlng.lat, e.latlng.lng];
+            const routeRef = db.ref(`schools/${mySchoolId}/routes/${interactionState.routeId}`);
+
+            routeRef.once('value').then(snap => {
+                const route = snap.val();
+                if (!route) return resetInteraction();
+                if (!route.coords) route.coords = [];
+
+                if (interactionState.mode === 'move') {
+                    route.coords[interactionState.nodeIndex] = clickedPoint;
+                    map.off('mousemove', handleMarkerFollow);
+                    movingMarkerRef = null;
+                    resetInteraction();
+                    routeRef.update({ coords: route.coords });
+                } 
+                else if (interactionState.mode === 'new') {
+                    route.coords.push(clickedPoint);
+                    interactionState.mode = 'after';
+                    interactionState.nodeIndex = 0;
+                    showIndicator(`Route-Bau aktiv: Klicke weiter, um Linienpunkte hinzuzufügen. Rechtsklick zum Beenden.`);
+                    routeRef.update({ coords: route.coords });
+                } 
+                else if (interactionState.mode === 'before') {
+                    route.coords.splice(interactionState.nodeIndex, 0, clickedPoint);
+                    resetInteraction();
+                    routeRef.update({ coords: route.coords });
+                } 
+                else if (interactionState.mode === 'after') {
+                    route.coords.splice(interactionState.nodeIndex + 1, 0, clickedPoint);
+                    interactionState.nodeIndex++; 
+                    routeRef.update({ coords: route.coords });
+                }
+            });
+        }
+
+        function renderAllSchoolsRoutes(schoolsData) {
+            routeLinesLayer.clearLayers();
+            routeNodesLayer.clearLayers();
+            
+            const list = document.getElementById('route-list');
+            if (list) list.innerHTML = '';
+
+            // Iteriere über ALLE Schulen aus der Datenbank
+            Object.keys(schoolsData).forEach(schoolId => {
+                const school = schoolsData[schoolId];
+                const isMySchool = schoolId === mySchoolId;
+                const schoolName = school.name || schoolId.toUpperCase().replace("-", " ");
+
+                if (school.routes) {
+                    Object.keys(school.routes).forEach(routeId => {
+                        const route = school.routes[routeId];
+                        if (!route.coords) route.coords = [];
+
+                        // 1. Linienzug auf Karte rendern (für alle Schulen sichtbar)
+                        if (route.coords.length >= 2) {
+                            L.polyline(route.coords, { 
+                                color: route.color, 
+                                weight: 5, 
+                                opacity: isMySchool ? 0.85 : 0.4 // Fremde Schulen leicht transparent machen zur Unterscheidung
+                            }).addTo(routeLinesLayer).bindPopup(`<b>${schoolName}</b><br>🚍 Route: ${route.name}`);
+                        }
+
+                        // 2. Bearbeitungs-Nodes NUR zeichnen, wenn die Route der EIGENEN Schule gehört
+                        if (isMySchool) {
+                            route.coords.forEach((coord, index) => {
+                                const isStart = index === 0;
+                                const nodeMarker = L.circleMarker(coord, {
+                                    radius: isStart ? 8 : 6, 
+                                    fillColor: isStart ? '#67C23A' : '#ffffff', 
+                                    color: route.color, 
+                                    weight: 3, 
+                                    fillOpacity: 1
+                                }).addTo(routeNodesLayer);
+
+                                nodeMarker.on('contextmenu', (e) => {
+                                    L.DomEvent.preventDefault(e);
+                                    L.DomEvent.stopPropagation(e);
+                                    if (interactionState.mode) return;
+
+                                    window.currentSelectedMarker = nodeMarker;
+                                    L.popup()
+                                        .setLatLng(e.latlng)
+                                        .setContent(`
+                                            <div class="popup-menu">
+                                                <h4 style="margin-bottom: 5px;">${route.name}</h4>
+                                                <button onclick="window.startNodeMove('${routeId}', ${index})">📍 Start Moving</button>
+                                                <button onclick="window.prepareInsertion('${routeId}', ${index}, 'before')">➕ Add Point Before</button>
+                                                <button onclick="window.prepareInsertion('${routeId}', ${index}, 'after')">➕ Add Point After</button>
+                                                <button class="danger-action" onclick="window.deleteNode('${routeId}', ${index})">❌ Delete Node</button>
+                                            </div>
+                                        `).openOn(map);
+                                });
+                            });
+
+                            // Sidebar Element NUR für die eigenen Routen erstellen
+                            if (list) {
+                                const li = document.createElement('li');
+                                li.style.borderLeft = `5px solid ${route.color}`;
+                                li.innerHTML = `<span><b>${route.name}</b> (${route.coords.length} pts.)</span> <span class="delete-btn">❌</span>`;
+                                
+                                li.onclick = () => { 
+                                    if(route.coords.length > 0) map.panTo(route.coords[0]); 
+                                };
+                                
+                                li.querySelector('.delete-btn').onclick = (e) => {
+                                    e.stopPropagation();
+                                    if(confirm(`Route "${route.name}" komplett löschen?`)) {
+                                        db.ref(`schools/${mySchoolId}/routes/${routeId}`).remove();
+                                    }
+                                };
+                                list.appendChild(li);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        window.startNodeMove = function(routeId, index) {
+            map.closePopup();
+            interactionState = { mode: 'move', routeId: routeId, nodeIndex: index };
+            movingMarkerRef = window.currentSelectedMarker;
+            showIndicator("📍 Punkt folgt Cursor. Links-Klick zum Festsetzen!");
+            map.on('mousemove', handleMarkerFollow);
+        };
+
+        function handleMarkerFollow(e) {
+            if (interactionState.mode !== 'move' || !movingMarkerRef) return;
+            movingMarkerRef.setLatLng(e.latlng);
+            
+            db.ref(`schools/${mySchoolId}/routes/${interactionState.routeId}/coords`).once('value').then(snap => {
+                let coords = snap.val() || [];
+                coords[interactionState.nodeIndex] = [e.latlng.lat, e.latlng.lng];
+                routeLinesLayer.clearLayers();
+                L.polyline(coords, { color: '#67C23A', weight: 5, opacity: 0.5, dashArray: '5, 10' }).addTo(routeLinesLayer);
+            });
+        }
+
+        window.prepareInsertion = function(routeId, index, position) {
+            map.closePopup();
+            interactionState = { mode: position, routeId: routeId, nodeIndex: index };
+            showIndicator(position === 'before' ? "Klicke auf die Karte, um Punkt DAVOR einzufügen..." : "Klicke auf die Karte, um Punkt DANACH einzufügen...");
+        };
+
+        document.getElementById('add-route-btn').onclick = function() {
+            const rName = prompt("Routen-Name:") || "Neue Route";
+            const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16);
+            
+            const newRouteRef = db.ref(`schools/${mySchoolId}/routes`).push();
+            const newId = newRouteRef.key;
+            
+            newRouteRef.set({ name: rName, coords: [], color: randomColor }).then(() => {
+                interactionState = { mode: 'new', routeId: newId, nodeIndex: 0 };
+                showIndicator("🗺️ Klicke auf die Karte, um den Startpunkt zu setzen!");
+            }).catch(err => {
+                console.error("Firebase Error:", err);
+            });
+        };
+
+        window.deleteNode = function(routeId, index) {
+            const routeRef = db.ref(`schools/${mySchoolId}/routes/${routeId}`);
+            routeRef.once('value').then(snap => {
+                const route = snap.val();
+                if (!route) return;
+                route.coords.splice(index, 1);
+                
+                if (route.coords.length === 0) {
+                    routeRef.remove();
+                } else {
+                    routeRef.update({ coords: route.coords });
+                }
+                map.closePopup();
+            });
+        };
+
+        function renderStudents(studentsData) {
+            studentLayer.clearLayers();
+            const studentList = Object.values(studentsData).filter(s => s.schoolId === mySchoolId || !s.schoolId);
+            const counterEl = document.getElementById('student-count');
+            if (counterEl) counterEl.innerText = studentList.length;
+            
+            studentList.forEach(student => {
+                L.circleMarker([student.lat, student.lng], {
+                    radius: 5, fillColor: '#409EFF', color: '#ffffff', weight: 1.5, fillOpacity: 0.9
+                }).addTo(studentLayer).bindPopup(`<b>Student:</b> ${student.name}`);
+            });
+        }
+
+        function showIndicator(text) {
+            const ind = document.getElementById('action-indicator');
+            if (ind) {
+                ind.innerText = text;
+                ind.style.display = 'block';
+            }
+        }
+
+        function resetInteraction() {
+            interactionState = { mode: null, routeId: null, nodeIndex: null };
+            const ind = document.getElementById('action-indicator');
+            if (ind) ind.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Westroad Operation Control</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <style>
+        #hazard-list { list-style: none; margin-top: 10px; }
+        #hazard-list li { 
+            display: flex; justify-content: space-between; align-items: center;
+            background: #fff; padding: 10px; margin-bottom: 6px; border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); cursor: pointer; transition: transform 0.1s;
+        }
+        #hazard-list li:active { transform: scale(0.98); }
+        .delete-btn { color: var(--danger); font-weight: bold; padding: 4px 8px; cursor: pointer; }
+        .popup-menu button { 
+            display: block; width: 100%; padding: 6px; margin-top: 4px; 
+            border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; 
+        }
+        .popup-menu button.danger-action { background: #fef0f0; color: var(--danger); border-color: #fde2e2; }
+        select { width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #fafafa; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div id="action-indicator">Drawing Active</div>
+    <div class="dashboard">
+        <div class="sidebar">
+            <button class="btn btn-logout" onclick="logout()">🏃 Sign Out</button>
+            
+            <div class="panel-section">
+                <h3>⚠️ Broadcast Network Incident</h3>
+                
+                <div class="input-group" style="margin-top: 10px;">
+                    <label>Incident Title</label>
+                    <input type="text" id="h-title" placeholder="e.g. SH 6 Roadworks">
+                </div>
+
+                <div class="input-group">
+                    <label>Reason</label>
+                    <input type="text" id="h-desc" placeholder="e.g. Resurfacing, expect delays.">
+                </div>
+
+                <div class="input-group">
+                    <label>Duration</label>
+                    <input type="text" id="h-time" placeholder="e.g. 25 May 10am - 3pm">
+                </div>
+
+                <div class="input-group">
+                    <label>Road information</label>
+                    <input type="text" id="h-type" placeholder="e.g. full road closed">
+                </div>
+
+                <div class="input-group">
+                    <label>Severity Level (Color)</label>
+                    <select id="h-color">
+                        <option value="#E6A23C" style="color: #E6A23C; font-weight: bold;">💛 Yellow (Minor Advisory)</option>
+                        <option value="#E67E22" style="color: #E67E22; font-weight: bold;">🧡 Orange (Moderate Delay)</option>
+                        <option value="#F56C6C" style="color: #F56C6C; font-weight: bold;">❤️ Red (Closed)</option>
+                    </select>
+                </div>
+
+                <button id="add-hazard-btn" class="btn btn-danger">🚧 Initialize Incident Zone</button>
+                <ul id="hazard-list"></ul>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="app.js"></script>
+    <script>
+        let hazardLinesLayer, hazardNodesLayer;
+        let interactionState = { mode: null, hazardId: null, nodeIndex: null };
+        let movingMarkerRef = null;
+
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                window.location.href = "index.html";
+            } else { 
+                initMap('map'); 
+                
+                hazardLinesLayer = L.layerGroup().addTo(map);
+                hazardNodesLayer = L.layerGroup().addTo(map);
+
+                map.on('click', handleMapClick);
+
+                map.on('contextmenu', (e) => {
+                    if (interactionState.mode && !e.target.options?.color) {
+                        if (interactionState.mode === 'move') {
+                            map.off('mousemove', handleMarkerFollow);
+                            movingMarkerRef = null;
+                        }
+                        resetInteraction();
+                        listenToHazards();
+                    }
+                });
+
+                listenToHazards();
+            }
+        });
+
+        // =========================================================================
+        // REALTIME DATABASE SYNC
+        // =========================================================================
+        function listenToHazards() {
+            db.ref('hazards').on('value', snapshot => {
+                const hazardsData = snapshot.val() || {};
+                renderHazards(hazardsData);
+            });
+        }
+
+        // =========================================================================
+        // ZENTRALER MAP-KLICK HANDLER
+        // =========================================================================
+        function handleMapClick(e) {
+            if (!interactionState.mode) return;
+            
+            const clickedPoint = [e.latlng.lat, e.latlng.lng];
+            const hazardRef = db.ref(`hazards/${interactionState.hazardId}`);
+
+            hazardRef.once('value').then(snap => {
+                const hazard = snap.val();
+                if (!hazard) return resetInteraction();
+                if (!hazard.coords) hazard.coords = [];
+
+                if (interactionState.mode === 'move') {
+                    hazard.coords[interactionState.nodeIndex] = clickedPoint;
+                    map.off('mousemove', handleMarkerFollow);
+                    movingMarkerRef = null;
+                    resetInteraction();
+                    hazardRef.update({ coords: hazard.coords });
+                } 
+                else if (interactionState.mode === 'new') {
+                    hazard.coords.push(clickedPoint);
+                    interactionState.mode = 'after';
+                    interactionState.nodeIndex = 0;
+                    showIndicator(`Zone wird erweitert: Klicke für mehr Punkte. Rechtsklick zum Beenden.`);
+                    hazardRef.update({ coords: hazard.coords });
+                } 
+                else if (interactionState.mode === 'before') {
+                    hazard.coords.splice(interactionState.nodeIndex, 0, clickedPoint);
+                    resetInteraction();
+                    hazardRef.update({ coords: hazard.coords });
+                } 
+                else if (interactionState.mode === 'after') {
+                    hazard.coords.splice(interactionState.nodeIndex + 1, 0, clickedPoint);
+                    interactionState.nodeIndex++; 
+                    hazardRef.update({ coords: hazard.coords });
+                }
+            });
+        }
+
+        // =========================================================================
+        // RENDERING LOGIC
+        // =========================================================================
+        function renderHazards(hazardsData) {
+            hazardLinesLayer.clearLayers();
+            hazardNodesLayer.clearLayers();
+            
+            const list = document.getElementById('hazard-list');
+            list.innerHTML = '';
+
+            Object.keys(hazardsData).forEach(hazardId => {
+                const hazard = hazardsData[hazardId];
+                if (!hazard.coords) hazard.coords = [];
+
+                // Linienzug zeichnen
+                if (hazard.coords.length >= 2) {
+                    L.polyline(hazard.coords, { color: hazard.color, weight: 6, opacity: 0.85 }).addTo(hazardLinesLayer);
+                }
+
+                // Nodes zeichnen (Für Bearbeitung)
+                hazard.coords.forEach((coord, index) => {
+                    const isStart = index === 0;
+                    const nodeMarker = L.circleMarker(coord, {
+                        radius: isStart ? 8 : 6, 
+                        fillColor: isStart ? '#ffffff' : '#ffffff', 
+                        color: hazard.color, 
+                        weight: 4, 
+                        fillOpacity: 1
+                    }).addTo(hazardNodesLayer);
+
+                    // Popup-Menü bei Rechtsklick auf Node
+                    nodeMarker.on('contextmenu', (e) => {
+                        L.DomEvent.preventDefault(e);
+                        L.DomEvent.stopPropagation(e);
+                        if (interactionState.mode) return;
+
+                        window.currentSelectedMarker = nodeMarker;
+                        L.popup()
+                            .setLatLng(e.latlng)
+                            .setContent(`
+                                <div class="popup-menu">
+                                    <h4 style="margin-bottom: 5px;">${hazard.title}</h4>
+                                    <button onclick="window.startNodeMove('${hazardId}', ${index})">📍 Move Point</button>
+                                    <button onclick="window.prepareInsertion('${hazardId}', ${index}, 'before')">➕ Add Before</button>
+                                    <button onclick="window.prepareInsertion('${hazardId}', ${index}, 'after')">➕ Add After</button>
+                                    <button class="danger-action" onclick="window.deleteNode('${hazardId}', ${index})">❌ Delete Node</button>
+                                </div>
+                            `).openOn(map);
+                    });
+                });
+
+                // Sidebar Element erstellen
+                const li = document.createElement('li');
+                li.style.borderLeft = `5px solid ${hazard.color}`;
+                li.innerHTML = `<span><b>${hazard.title}</b> (${hazard.type})</span> <span class="delete-btn">❌</span>`;
+                
+                li.onclick = () => { 
+                    if(hazard.coords.length > 0) map.panTo(hazard.coords[0]); 
+                };
+                
+                li.querySelector('.delete-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    if(confirm(`Möchtest du die Meldung "${hazard.title}" komplett löschen?`)) {
+                        db.ref(`hazards/${hazardId}`).remove();
+                    }
+                };
+                list.appendChild(li);
+            });
+        }
+
+        // Node verschieben
+        window.startNodeMove = function(hazardId, index) {
+            map.closePopup();
+            interactionState = { mode: 'move', hazardId: hazardId, nodeIndex: index };
+            movingMarkerRef = window.currentSelectedMarker;
+            showIndicator("📍 Modus: Verschieben. Klicke zum Platzieren.");
+            map.on('mousemove', handleMarkerFollow);
+        };
+
+        function handleMarkerFollow(e) {
+            if (interactionState.mode !== 'move' || !movingMarkerRef) return;
+            movingMarkerRef.setLatLng(e.latlng);
+            
+            db.ref(`hazards/${interactionState.hazardId}/coords`).once('value').then(snap => {
+                let coords = snap.val() || [];
+                coords[interactionState.nodeIndex] = [e.latlng.lat, e.latlng.lng];
+                hazardLinesLayer.clearLayers();
+                L.polyline(coords, { color: '#F56C6C', weight: 5, opacity: 0.5, dashArray: '5, 10' }).addTo(hazardLinesLayer);
+            });
+        }
+
+        // Insertion vorbereiten
+        window.prepareInsertion = function(hazardId, index, position) {
+            map.closePopup();
+            interactionState = { mode: position, hazardId: hazardId, nodeIndex: index };
+            showIndicator(position === 'before' ? "Klicke auf die Karte, um Punkt DAVOR einzufügen..." : "Klicke auf die Karte, um Punkt DANACH einzufügen...");
+        };
+
+        // Klick auf den "Initialize" Button
+        document.getElementById('add-hazard-btn').onclick = function() {
+            const title = document.getElementById('h-title').value;
+            const desc = document.getElementById('h-desc').value;
+            const time = document.getElementById('h-time').value;
+            const type = document.getElementById('h-type').value;
+            const color = document.getElementById('h-color').value;
+
+            if(!title || !desc || !time) return alert("Bitte fülle Titel, Beschreibung und Zeitraum aus!");
+            
+            const newHazardRef = db.ref('hazards').push();
+            const newId = newHazardRef.key;
+            
+            newHazardRef.set({
+                title: title,
+                desc: desc,
+                time: time,
+                type: type,
+                color: color,
+                coords: []
+            }).then(() => {
+                // Eingabefelder leeren
+                document.getElementById('h-title').value = '';
+                document.getElementById('h-desc').value = '';
+                document.getElementById('h-time').value = '';
+                
+                interactionState = { mode: 'new', hazardId: newId, nodeIndex: 0 };
+                showIndicator("🗺️ Klicke auf die Karte, um die Zone zu zeichnen!");
+            });
+        };
+
+        // Einzelnen Node löschen
+        window.deleteNode = function(hazardId, index) {
+            const hazardRef = db.ref(`hazards/${hazardId}`);
+            hazardRef.once('value').then(snap => {
+                const hazard = snap.val();
+                if (!hazard) return;
+                hazard.coords.splice(index, 1);
+                
+                if (hazard.coords.length === 0) {
+                    hazardRef.remove();
+                } else {
+                    hazardRef.update({ coords: hazard.coords });
+                }
+                map.closePopup();
+            });
+        };
+
+        function showIndicator(text) {
+            const ind = document.getElementById('action-indicator');
+            ind.innerText = text;
+            ind.style.display = 'block';
+        }
+
+        function resetInteraction() {
+            interactionState = { mode: null, hazardId: null, nodeIndex: null };
+            document.getElementById('action-indicator').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

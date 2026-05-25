@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+        .dashboard { display: flex; height: 100vh; width: 100vw; }
+        .sidebar { width: 320px; min-width: 320px; background: #f8f9fa; padding: 20px; box-sizing: border-box; overflow-y: auto; }
+        #map { flex-grow: 1; height: 100%; width: 100%; }
+        
+        /* Styling für die Info-Box im Popup */
+        .incident-popup { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-width: 220px; }
+        .incident-popup h3 { margin: 0 0 8px 0; font-size: 1.1rem; display: flex; align-items: center; gap: 5px; }
+        .incident-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; margin-bottom: 8px; }
+        .incident-meta { font-size: 0.85rem; color: #333; line-height: 1.4; }
+        .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <button class="btn btn-logout" onclick="logout()">🏃 Disconnect Portal</button>
+            <div class="panel-section">
+                <h3>ℹ️ West Coast Overview</h3>
+                <p style="font-size: 0.9rem; line-height: 1.4; color: var(--text);">
+                    Welcome back! Below you see all real-time bus routes and active road hazard advisories managed by Westroad Operations.
+                </p>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="app.js"></script>
+    <script>
+        let routeLinesLayer, publicHazardLayer;
+
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                window.location.href = "index.html";
+            } else {
+                initMap('map');
+
+                // Layer-Gruppen initialisieren und zur Karte hinzufügen
+                routeLinesLayer = L.layerGroup().addTo(map);
+                publicHazardLayer = L.layerGroup().addTo(map);
+
+                // 1. ALLE Busrouten von ALLEN Schulen laden
+                listenToAllSchoolRoutes();
+
+                // 2. ALLE Gefahrenstellen laden (Durchgezogene Linie + 1 zentrales Symbol)
+                listenToGlobalHazards();
+
+                // Zoom-Listener für dynamische Symbole und Linienstärken
+                map.on('zoomend', updateParentHazardScales);
+            }
+        });
+
+        // Hilfsfunktion für dynamische Skalierung basierend auf dem Zoom-Level
+        function getScales(zoom) {
+            const factor = Math.pow(1.4, zoom - 13);
+            return {
+                lineWidth: Math.max(2, Math.min(12, 6 * factor)),
+                iconSize: Math.max(16, Math.min(42, 24 * factor))
+            };
+        }
+
+        function updateParentHazardScales() {
+            const currentZoom = map.getZoom();
+            const scales = getScales(currentZoom);
+
+            // Gefahrenstellen-Layer skalieren
+            publicHazardLayer.eachLayer(layer => {
+                if (layer instanceof L.Polyline) {
+                    layer.setStyle({ weight: scales.lineWidth });
+                } else if (layer instanceof L.Marker && layer.options.icon) {
+                    const color = layer.options.hazardColor || '#F56C6C';
+                    layer.setIcon(createHazardIcon(color, scales.iconSize));
+                }
+            });
+        }
+
+        // Generiert das SVG-Warn-Dreieck in der jeweiligen Incident-Farbe
+        function createHazardIcon(color, size) {
+            return L.divIcon({
+                html: `
+                    <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L1 21H23L12 2Z" fill="${color}" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M12 9V14" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="12" cy="18" r="1" fill="#ffffff"/>
+                    </svg>
+                `,
+                className: 'custom-hazard-marker',
+                iconSize: [size, size],
+                iconAnchor: [size / 2, size]
+            });
+        }
+
+        // Holt ALLE Routen aus der Datenbank (iteriert durch alle Schulen)
+        function listenToAllSchoolRoutes() {
+            db.ref('schools').on('value', snapshot => {
+                routeLinesLayer.clearLayers();
+                const schoolsData = snapshot.val() || {};
+
+                Object.keys(schoolsData).forEach(schoolId => {
+                    const school = schoolsData[schoolId];
+                    if (school.routes) {
+                        Object.values(school.routes).forEach(route => {
+                            if (route.coords && route.coords.length >= 2) {
+                                L.polyline(route.coords, {
+                                    color: route.color || '#409EFF',
+                                    weight: 4,
+                                    opacity: 0.85
+                                }).addTo(routeLinesLayer).bindPopup(`<b>Bus-Route:</b> ${route.name}`);
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        // Holt alle aktiven Straßensperrungen / Hazards
+        function listenToGlobalHazards() {
+            db.ref('hazards').on('value', snapshot => {
+                publicHazardLayer.clearLayers();
+                const hazardsData = snapshot.val() || {};
+                const scales = getScales(map.getZoom());
+
+                Object.values(hazardsData).forEach(h => {
+                    if (h.coords && h.coords.length >= 2) {
+                        const hazardColor = h.color || '#F56C6C';
+                        const popupContent = `
+                            <div class="incident-popup">
+                                <h3 style="color: ${hazardColor};">🚧 Straßensperrung: ${h.title}</h3>
+                                <div class="incident-badge" style="background-color: ${hazardColor};">${h.type}</div>
+                                <div class="incident-meta">
+                                    <b>Auswirkung:</b><br>${h.desc}<br><br>
+                                    <b>Zeitraum:</b>
+                                    <span class="incident-time">${h.time}</span>
+                                </div>
+                            </div>
+                        `;
+
+                        // Durchgezogene Linie für das Problem
+                        L.polyline(h.coords, { 
+                            color: hazardColor, 
+                            weight: scales.lineWidth, 
+                            opacity: 0.85 
+                        }).addTo(publicHazardLayer).bindPopup(popupContent);
+
+                        // Nur EIN einzelnes Warnsymbol am ersten Punkt der Linie
+                        L.marker(h.coords[0], {
+                            icon: createHazardIcon(hazardColor, scales.iconSize),
+                            hazardColor: hazardColor
+                        }).addTo(publicHazardLayer).bindPopup(popupContent);
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
