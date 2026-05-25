@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>School Portal - Administration</title>
+    <title>School Administration</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="style.css">
     <style>
@@ -187,9 +187,9 @@
     </div>
 
     <div class="mobile-header">
-        <h2 style="margin: 0; font-size: 1.1rem;">School Portal</h2>
+        <h2 style="margin: 0; font-size: 1.1rem;">Route Administration</h2>
         <div style="display: flex; gap: 8px;">
-            <button class="btn" onclick="toggleMobileSidebar()" style="background: #409EFF; color: #fff; padding: 8px 14px; font-size: 0.9rem;">📋 Toggle Forms</button>
+            <button class="btn" onclick="toggleMobileSidebar()" style="background: #409EFF; color: #fff; padding: 8px 14px; font-size: 0.9rem;">Routes</button>
             <button class="btn btn-logout" onclick="logout()" style="margin: 0; padding: 8px 12px; font-size: 0.9rem;">🏃 Sign Out</button>
         </div>
     </div>
@@ -197,23 +197,19 @@
     <div class="dashboard">
         <div class="sidebar" id="sidebar-panel">
             <button class="btn-close-sidebar" onclick="toggleMobileSidebar()">❌ Close Menu</button>
-            <button class="btn btn-logout desktop-logout" onclick="logout()">🏃 Sign Out</button>
+            <button class="btn btn-logout desktop-logout" onclick="logout()">Sign Out</button>
             
             <div class="panel-section">
-                <h3>🏫 Institutional Domain</h3>
+                <h3>School:</h3>
                 <div id="school-info" style="font-weight: 700; color: var(--primary); margin-top: 5px;">Authenticating...</div>
             </div>
 
             <div class="panel-section">
-                <h3>🚍 Route Builder</h3>
+                <h3>Route Builder:</h3>
                 <button id="add-route-btn" class="btn btn-success" style="width: 100%; padding: 12px;">➕ Create New Route Path</button>
                 <ul id="route-list"></ul>
             </div>
 
-            <div class="panel-section">
-                <h3>👥 Registered Students</h3>
-                <div style="font-size: 1.1rem; font-weight: bold;">Count: <span id="student-count" style="color: var(--primary);">0</span></div>
-            </div>
         </div>
         <div id="map"></div>
     </div>
