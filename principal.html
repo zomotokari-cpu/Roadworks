@@ -318,11 +318,6 @@
                 renderAllSchoolsRoutes(schoolsData);
             });
 
-            db.ref('students').on('value', snapshot => {
-                const studentsData = snapshot.val() || {};
-                renderStudents(studentsData);
-            });
-
             db.ref('hazards').on('value', snapshot => {
                 publicHazardLayer.clearLayers();
                 const hazardsData = snapshot.val() || {};
@@ -554,17 +549,6 @@
                 map.closePopup();
             });
         };
-
-        function renderStudents(studentsData) {
-            studentLayer.clearLayers();
-            const studentList = Object.values(studentsData).filter(s => s.schoolId === mySchoolId || !s.schoolId);
-            
-            studentList.forEach(student => {
-                L.circleMarker([student.lat, student.lng], {
-                    radius: 5, fillColor: '#409EFF', color: '#ffffff', weight: 1.5, fillOpacity: 0.9
-                }).addTo(studentLayer).bindPopup(`<b>Student:</b> ${student.name}`);
-            });
-        }
 
         function showIndicator(text) {
             const ind = document.getElementById('action-indicator');
