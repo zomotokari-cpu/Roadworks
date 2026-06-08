@@ -249,17 +249,16 @@
         // Sofort prüfen, ob ein User eingeloggt ist
         auth.onAuthStateChanged(user => {
             if (!user) {
-                // Wenn kein User da ist, sofort zum Login weiterleiten
                 window.location.replace("../index.html"); 
             }
         });
     </script>
     <script>
-        let hazardLinesLayer, hazardNodesLayer;
+        let hazardLinesLayer, hazardNodesLayer, routeLinesLayer;
         let interactionState = { mode: null, hazardId: null, nodeIndex: null };
         let movingMarkerRef = null;
-        let localCoordsCache = null; // Speichert den aktuellen Pfad während des Ziehens/Zeichnens
-        let activeDrawingColor = '#409EFF'; // Standard-Vorschaufarbe beim Zeichnen
+        let localCoordsCache = null; 
+        let activeDrawingColor = '#409EFF'; 
 
         // Mobile Sidebar Toggle Orchestration Logic
         function toggleMobileSidebar() {
@@ -275,6 +274,7 @@
                 
                 hazardLinesLayer = L.layerGroup().addTo(map);
                 hazardNodesLayer = L.layerGroup().addTo(map);
+                routeLinesLayer = L.layerGroup().addTo(map); // Routen-Layer initialisiert
 
                 map.on('click', handleMapClick);
 
@@ -286,16 +286,15 @@
                 });
 
                 listenToHazards();
+                listenToAllSchoolRoutes(); // Routen-Echtzeit-Abfrage gestartet
             }
         });
 
         // =========================================================================
-        // REALTIME DATABASE SYNC
+        // REALTIME DATABASE SYNC (HAZARDS)
         // =========================================================================
         function listenToHazards() {
             db.ref('hazards').on('value', snapshot => {
-                // Wenn wir aktiv im Interaktionsmodus sind, unterdrücken wir das automatische 
-                // DB-Rendering, um Ruckler zu vermeiden. renderLocalProgress übernimmt das Zeichnen.
                 if (interactionState.mode) return;
 
                 const hazardsData = snapshot.val() || {};
@@ -303,8 +302,34 @@
             });
         }
 
+        // =========================================================================
+        // REALTIME DATABASE SYNC (BUS ROUTES)
+        // =========================================================================
+        function listenToAllSchoolRoutes() {
+            db.ref('schools').on('value', snapshot => {
+                routeLinesLayer.clearLayers();
+                const schoolsData = snapshot.val() || {};
+
+                Object.keys(schoolsData).forEach(schoolId => {
+                    const school = schoolsData[schoolId];
+                    if (school.routes) {
+                        Object.values(school.routes).forEach(route => {
+                            if (route.coords && route.coords.length >= 2) {
+                                L.polyline(route.coords, {
+                                    color: route.color || '#409EFF',
+                                    weight: 4,
+                                    opacity: 0.55 // Leicht transparent im Hintergrund
+                                }).addTo(routeLinesLayer).bindPopup(`<b>Bus Route:</b> ${route.name}`, {
+                                    autoPan: false
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
         // Lokaler Hilfs-Renderer für sofortiges visuelles Feedback während des Zeichnens
-        // Zeichnet alle anderen Zonen normal weiter, aktualisiert aber die aktive Zone live
         function renderLocalProgress() {
             if (!localCoordsCache || !interactionState.hazardId) return;
 
@@ -317,15 +342,12 @@
                 Object.keys(hazardsData).forEach(hazardId => {
                     let coords = hazardsData[hazardId].coords || [];
                     let color = hazardsData[hazardId].color;
-                    let title = hazardsData[hazardId].title;
 
-                    // Wenn es die aktuell bearbeitete Zone ist, nehmen wir die lokalen Cache-Koordinaten
                     if (hazardId === interactionState.hazardId) {
                         coords = localCoordsCache;
                         color = activeDrawingColor;
                     }
 
-                    // Linien zeichnen
                     if (coords.length >= 2) {
                         L.polyline(coords, { 
                             color: color, 
@@ -335,7 +357,6 @@
                         }).addTo(hazardLinesLayer);
                     }
 
-                    // Nodes zeichnen
                     coords.forEach((coord, index) => {
                         const isStart = index === 0;
                         L.circleMarker(coord, {
@@ -344,7 +365,6 @@
                             color: color, 
                             weight: 4, 
                             fillOpacity: 1,
-                            // Während des Zeichnens blockieren die Nodes der aktiven Zone keine Klicks
                             interactive: hazardId !== interactionState.hazardId 
                         }).addTo(hazardNodesLayer);
                     });
@@ -386,12 +406,8 @@
                     hazardRef.update({ coords: hazard.coords });
                 } 
                 else if (interactionState.mode === 'before') {
-                    // Fügt den Punkt vor dem Index ein
                     hazard.coords.splice(interactionState.nodeIndex, 0, clickedPoint);
                     localCoordsCache = [...hazard.coords];
-                    
-                    // Schaltet jetzt nahtlos in den fortlaufenden 'after' Modus um,
-                    // genau an der Stelle, an der gerade eingefügt wurde!
                     interactionState.mode = 'after'; 
                     
                     renderLocalProgress();
