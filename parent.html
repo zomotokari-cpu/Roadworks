@@ -271,7 +271,7 @@
                 // Debounce von 400ms, damit wir nicht bei jedem Buchstaben die API triggern
                 searchTimeout = setTimeout(() => {
                     fetchLiveSuggestions(query);
-                }, 400);
+                }, 150);
             });
 
             // Such-Button oder Enter wählt einfach das oberste Element
