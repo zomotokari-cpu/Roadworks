@@ -48,6 +48,31 @@
         .incident-meta { font-size: 0.85rem; color: #333; line-height: 1.4; }
         .incident-time { background: #f1f1f1; padding: 4px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; display: block; margin-top: 5px; border-left: 3px solid #666; }
 
+        /* Suchfunktions-Styling */
+        .search-container {
+            margin: 15px 0 5px 0;
+            display: flex;
+            gap: 6px;
+        }
+        .search-input {
+            flex-grow: 1;
+            padding: 10px 12px;
+            border: 1px solid var(--border, #ccc);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .search-btn {
+            background: #409EFF;
+            color: white;
+            border: none;
+            padding: 0 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .search-btn:active { background: #3a8ee6; }
+
         /* Mobile Breakpoint - Unshakable Overlay Strategy */
         @media (max-width: 768px) {
             .dashboard { 
@@ -56,35 +81,43 @@
                 position: relative;
             }
             
-            /* The header becomes a fixed sticker on the screen glass. Unmovable by Leaflet. */
+            /* Höherer Header für die Suchleiste am Handy */
             .sidebar { 
                 position: fixed;
                 top: 0;
                 left: 0;
                 width: 100%; 
                 min-width: 100%; 
-                height: 70px; 
-                min-height: 70px; 
-                max-height: 70px;
+                height: 115px; /* Erhöht von 70px auf 115px für die Suche */
+                min-height: 115px; 
+                max-height: 115px;
                 padding: 10px 15px; 
                 display: flex;
-                align-items: center;
-                justify-content: space-between;
+                flex-direction: column;
+                align-items: stretch;
+                justify-content: flex-start;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.15);
                 overflow: hidden;
                 box-sizing: border-box;
+                gap: 8px;
             }
             
+            .mobile-top-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+            }
+
             .panel-section { display: none; }
             
             .btn-logout { 
                 margin: 0 !important; 
                 width: auto !important; 
-                padding: 8px 16px !important; 
-                font-size: 0.9rem !important;
+                padding: 6px 14px !important; 
+                font-size: 0.85rem !important;
             }
             
-            /* Map runs fullscreen in the background, but steps down its internal elements */
             #map { 
                 position: absolute;
                 top: 0;
@@ -93,10 +126,17 @@
                 width: 100vw;
             }
 
-            /* Safely pushes the Zoom-Buttons (+/-) below our fixed header bar */
+            /* Zoom-Buttons weiter nach unten verschieben wegen tieferem Header */
             .leaflet-top {
-                top: 80px !important;
+                top: 125px !important;
             }
+            
+            .search-container {
+                margin: 0;
+                width: 100%;
+            }
+            .search-input { padding: 8px 10px; font-size: 0.85rem; }
+            .search-btn { padding: 0 12px; font-size: 0.85rem; }
             
             .incident-popup { min-width: 180px; }
         }
@@ -105,9 +145,17 @@
 <body>
     <div class="dashboard">
         <div class="sidebar">
-            <h2 style="margin: 0; font-size: 1.2rem; display: none;" class="mobile-title">West Coast: Overview</h2>
-            <button class="btn btn-logout" onclick="logout()" style="width: 100%; padding: 12px; font-size: 1rem;">Return</button>
-            <div class="panel-section" style="margin-top: 15px;">
+            <div class="mobile-top-row">
+                <h2 style="margin: 0; font-size: 1.2rem;" class="mobile-title">West Coast: Overview</h2>
+                <button class="btn btn-logout" onclick="logout()" style="width: 100%; padding: 12px; font-size: 1rem;">Return</button>
+            </div>
+
+            <div class="search-container">
+                <input type="text" id="map-search" class="search-input" placeholder="Search street or place..." onkeypress="if(event.key === 'Enter') executeMapSearch()">
+                <button class="search-btn" onclick="executeMapSearch()">🔍</button>
+            </div>
+
+            <div class="panel-section" style="margin-top: 5px;">
                 <h3>ℹ️ West Coast: Overview</h3>
                 <p style="font-size: 0.9rem; line-height: 1.4; color: var(--text); margin-top: 8px;">
                     Welcome back! Below you see all real-time bus routes and active road hazard advisories managed by Westroad Operations. We try to ensure the information on this site is always up to date, but we cannot guarantee its accuracy.
@@ -123,8 +171,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="app.js"></script>
     <script>
-        let routeLinesLayer, publicHazardLayer;
+        let routeLinesLayer, publicHazardLayer, searchMarkerLayer;
 
+        // Am Handy stellen wir sicher, dass die Titelzeile sichtbar bleibt
         if(window.innerWidth <= 768) {
             document.querySelector('.mobile-title').style.display = 'block';
         }
@@ -140,8 +189,8 @@
                     if (window.innerWidth <= 768) {
                         const popupLatLng = e.popup.getLatLng();
                         if (popupLatLng) {
-                            // Offsets the camera downward inside the canvas so popups clear the header
-                            const targetPoint = map.project(popupLatLng).subtract([0, 110]);
+                            // Erhöht auf 150, damit es unter den tieferen Header passt
+                            const targetPoint = map.project(popupLatLng).subtract([0, 150]);
                             map.panTo(map.unproject(targetPoint), { animate: true });
                         }
                     }
@@ -149,6 +198,7 @@
 
                 routeLinesLayer = L.layerGroup().addTo(map);
                 publicHazardLayer = L.layerGroup().addTo(map);
+                searchMarkerLayer = L.layerGroup().addTo(map); // Layer für Such-Marker hinzugefügt
 
                 // 1. Load ALL bus routes from ALL schools
                 listenToAllSchoolRoutes();
@@ -160,6 +210,48 @@
                 map.on('zoomend', updateParentHazardScales);
             }
         });
+
+        // =========================================================================
+        // OPENSTREETMAP (NOMINATIM) SUCHFUNKTION
+        // =========================================================================
+        function executeMapSearch() {
+            const query = document.getElementById('map-search').value.trim();
+            if (!query) return;
+
+            // Wir schränken die Suche optional ein oder lassen sie global laufen. 
+            // Nominatim gibt sauberes JSON zurück.
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const result = data[0];
+                        const lat = parseFloat(result.lat);
+                        const lon = parseFloat(result.lon);
+                        const targetLatLng = [lat, lon];
+
+                        // Alten Suchmarker entfernen
+                        searchMarkerLayer.clearLayers();
+
+                        // Neuen temporären Marker setzen
+                        const marker = L.marker(targetLatLng).addTo(searchMarkerLayer);
+                        
+                        // Kürzt den Namen für das Popup, falls er zu lang ist
+                        const displayName = result.display_name.split(',').slice(0, 3).join(',');
+                        marker.bindPopup(`📍 <b>Search Result:</b><br>${displayName}`).openPopup();
+
+                        // Kamera dorthin bewegen und reinzoomen
+                        map.setView(targetLatLng, 15, { animate: true });
+                    } else {
+                        alert("Location not found. Please try again.");
+                    }
+                })
+                .catch(err => {
+                    console.error("Search error:", err);
+                    alert("Error executing search.");
+                });
+        }
 
         function getScales(zoom) {
             const factor = Math.pow(1.4, zoom - 13);
