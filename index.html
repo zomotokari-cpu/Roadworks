@@ -142,6 +142,7 @@
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
+            margin-top: 15px;
         }
 
         .divider::before, .divider::after {
@@ -183,6 +184,11 @@
             </div>
             <button class="btn btn-primary" onclick="login()" style="margin-top: 10px;">Sign In</button>
             
+            <div class="divider">New Users</div>
+            <button class="btn" onclick="createAccountWithGoogle()" style="background: #4285F4; color: white; box-shadow: 0 4px 12px rgba(66, 133, 244, 0.2);">
+                Create Account with Google
+            </button>
+            
             <p id="error-msg" style="color: #EF4444; margin-top: 15px; font-size: 0.85rem; font-weight: 600; text-align: center; margin-bottom: 0; min-height: 20px;"></p>
         </div>
     </div>
@@ -192,6 +198,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="app.js"></script>
     <script>
+        // Google Auth Provider initialisieren
+        const googleProvider = new firebase.auth.GoogleAuthProvider();
+
         // Trigger login on pressing Enter inside password field
         document.getElementById('password').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') login();
@@ -208,6 +217,7 @@
             const p = document.getElementById('password').value;
             
             if (!e || !p) {
+                document.getElementById('error-msg').style.color = "#EF4444";
                 document.getElementById('error-msg').innerText = "Please fill in all fields.";
                 return;
             }
@@ -215,25 +225,77 @@
             executeAuth(e, p);
         }
 
+        // 3. GOOGLE ACCOUNT ERSTELLUNG / ANMELDUNG
+        function createAccountWithGoogle() {
+            auth.signInWithPopup(googleProvider).then((result) => {
+                const user = result.user;
+                
+                // Prüfen, ob der User bereits in der Realtime Database existiert
+                db.ref('users/' + user.uid).once('value').then(snap => {
+                    if (!snap.exists()) {
+                        // Account existiert noch nicht -> Neu anlegen mit Rolle 'none'
+                        db.ref('users/' + user.uid).set({
+                            name: user.displayName || "Google User",
+                            email: user.email,
+                            role: 'none',
+                            schoolID: ''
+                        }).then(() => {
+                            document.getElementById('error-msg').style.color = "#34D399"; // Grün für Erfolg
+                            document.getElementById('error-msg').innerText = "Account erstellt. Bitte schreiben Sie den Admin an.";
+                            auth.signOut(); // Direkt wieder ausloggen, da noch keine Rechte
+                        });
+                    } else {
+                        // Account existiert bereits in der DB
+                        const userData = snap.val();
+                        if (userData.role === 'none') {
+                            document.getElementById('error-msg').style.color = "#EF4444";
+                            document.getElementById('error-msg').innerText = "Ihr Account hat noch keine Rechte. Bitte schreiben Sie den Admin an.";
+                            auth.signOut();
+                        } else {
+                            // Wenn er bereits freigeschaltet wurde, direkt weiterleiten
+                            redirectBasedOnRole(userData.role);
+                        }
+                    }
+                });
+            }).catch(error => {
+                console.error("Google Auth Error: ", error);
+                document.getElementById('error-msg').style.color = "#EF4444";
+                document.getElementById('error-msg').innerText = "Google-Anmeldung fehlgeschlagen.";
+            });
+        }
+
         // Core authentication and redirection handler pipeline
         function executeAuth(email, password) {
             auth.signInWithEmailAndPassword(email, password).then((userCredential) => {
+                // Sonderfall: Dein manuell angelegter Admin-Account in Firebase Auth
+                if (email === "admin@test.com") {
+                    window.location.href = 'admin.html';
+                    return;
+                }
+
                 db.ref('users/' + userCredential.user.uid).once('value').then(snap => {
                     const userData = snap.val();
-                    if (!userData) {
-                        document.getElementById('error-msg').innerText = "User configuration missing.";
+                    if (!userData || userData.role === 'none') {
+                        document.getElementById('error-msg').style.color = "#EF4444";
+                        document.getElementById('error-msg').innerText = "Zugriff verweigert. Bitte Admin kontaktieren.";
+                        auth.signOut();
                         return;
                     }
                     
-                    const role = userData.role;
-                    if(role === 'parent') window.location.href = 'parent.html';
-                    if(role === 'principal') window.location.href = 'principal.html';
-                    if(role === 'westroad') window.location.href = 'westroad.html';
+                    redirectBasedOnRole(userData.role);
                 });
             }).catch(error => {
                 console.error("Auth Error: ", error);
+                document.getElementById('error-msg').style.color = "#EF4444";
                 document.getElementById('error-msg').innerText = "Invalid credentials. Please try again.";
             });
+        }
+
+        // Hilfsfunktion für die Weiterleitung nach Rolle
+        function redirectBasedOnRole(role) {
+            if(role === 'parent') window.location.href = 'parent.html';
+            if(role === 'principal') window.location.href = 'principal.html';
+            if(role === 'westroad') window.location.href = 'westroad.html';
         }
     </script>
 </body>
