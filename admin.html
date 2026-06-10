@@ -1,80 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - User Management</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            background: #f4f6f9;
-            margin: 0; padding: 20px;
-        }
-        .admin-box {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        h2 { color: #002147; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        th { background-color: #002147; color: white; }
-        .school-input {
-            width: 100px;
-            padding: 6px;
-            margin-left: 10px;
-            display: none; /* Standardmäßig versteckt */
-        }
-        .btn-save {
-            background: #D97706;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .btn-save:hover { background: #B45309; }
-    </style>
-</head>
-<body>
-
-<div class="admin-box">
-    <h2>Admin Dashboard – Benutzerfreischaltung</h2>
-    <p>Hier sind alle Accounts, die sich via Google registriert haben:</p>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Rolle / Berechtigung</th>
-                <th>Aktion</th>
-            </tr>
-        </thead>
-        <tbody id="user-table-body">
-            </tbody>
-    </table>
-</div>
-
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-<script src="app.js"></script> <script>
+
+<script src="app.js"></script> 
+
+<script>
+    // Falls 'db' in app.js anders benannt ist (z.B. database), hier anpassen.
+    // Wir stellen sicher, dass db existiert, falls app.js es als 'db' exportiert.
+    
     // Liste beim Start auslesen
     db.ref('users').on('value', snap => {
         const users = snap.val();
         const tbody = document.getElementById('user-table-body');
         tbody.innerHTML = ""; // Tabelle leeren
+
+        if (!users) return;
 
         for (let uid in users) {
             const user = users[uid];
@@ -86,7 +26,7 @@
             const showSchoolInput = user.role === 'principal' ? 'inline-block' : 'none';
 
             tr.innerHTML = `
-                <td>${user.name}</td>
+                <td>${user.name || 'Unbekannt'}</td>
                 <td>${user.email}</td>
                 <td>
                     <select id="role-${uid}" onchange="toggleSchoolInput('${uid}')">
@@ -136,5 +76,3 @@
         });
     }
 </script>
-</body>
-</html>
