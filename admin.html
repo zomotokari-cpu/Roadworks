@@ -178,43 +178,69 @@
     const db = adminApp.database();
     const auth = adminApp.auth();
 
-    // Live-Abfrage der Nutzerdatenbank
-    db.ref('users').on('value', snap => {
-        const users = snap.val();
-        const tbody = document.getElementById('user-table-body');
-        tbody.innerHTML = ""; // Platzhalter leeren
-
-        if (!users) {
-            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6B7280;">Keine registrierten Google-User gefunden.</td></tr>`;
-            return;
+    // AUTH-STATE BEACHTEN: Prüfen, wer eingeloggt ist
+    auth.onAuthStateChanged(user => {
+        if (user && user.email === "admin@test.com") {
+            // Admin ist eingeloggt -> Daten laden
+            loadUserTable();
+        } else {
+            // Kein Admin eingeloggt -> Weiterleitung zum Haupt-Login
+            // Alternativ kannst du hier ein prompt nutzen, um dich direkt anzumelden:
+            const email = prompt("Bitte Admin-Email eingeben:", "");
+            const password = prompt("Bitte Admin-Passwort eingeben:", "");
+            
+            if (email === "admin@test.com" && password) {
+                auth.signInWithEmailAndPassword(email, password)
+                    .then(() => { location.reload(); })
+                    .catch(err => {
+                        alert("Login fehlgeschlagen: " + err.message);
+                        window.location.href = 'index.html';
+                    });
+            } else {
+                window.location.href = 'index.html';
+            }
         }
-
-        for (let uid in users) {
-            const user = users[uid];
-            const tr = document.createElement('tr');
-            const showSchoolInput = user.role === 'principal' ? 'inline-block' : 'none';
-
-            tr.innerHTML = `
-                <td><b>${user.name || 'Google User'}</b></td>
-                <td>${user.email}</td>
-                <td>
-                    <select id="role-${uid}" onchange="toggleSchoolInput('${uid}')">
-                        <option value="none" ${user.role === 'none' ? 'selected' : ''}>None (Keine Rechte)</option>
-                        <option value="principal" ${user.role === 'principal' ? 'selected' : ''}>Principal (Schulleiter)</option>
-                        <option value="westroad" ${user.role === 'westroad' ? 'selected' : ''}>Westroad Admin</option>
-                    </select>
-                    <input type="text" id="school-${uid}" class="school-input" placeholder="School ID" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
-                </td>
-                <td>
-                    <button class="btn-save" onclick="saveUser('${uid}')">Save</button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        }
-    }, error => {
-        console.error("Datenbank-Fehler:", error);
-        document.getElementById('user-table-body').innerHTML = `<tr><td colspan="4" style="text-align: center; color: #EF4444;">Fehler beim Laden: ${error.message}</td></tr>`;
     });
+
+    // Funktion zum Laden der Tabelle (wird nur aufgerufen, wenn autorisiert)
+    function loadUserTable() {
+        db.ref('users').on('value', snap => {
+            const users = snap.val();
+            const tbody = document.getElementById('user-table-body');
+            tbody.innerHTML = ""; 
+
+            if (!users) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6B7280;">Keine registrierten Google-User gefunden.</td></tr>`;
+                return;
+            }
+
+            for (let uid in users) {
+                const user = users[uid];
+                const tr = document.createElement('tr');
+                const showSchoolInput = user.role === 'principal' ? 'inline-block' : 'none';
+
+                tr.innerHTML = `
+                    <td><b>${user.name || 'Google User'}</b></td>
+                    <td>${user.email}</td>
+                    <td>
+                        <select id="role-${uid}" onchange="toggleSchoolInput('${uid}')">
+                            <option value="none" ${user.role === 'none' ? 'selected' : ''}>None (Keine Rechte)</option>
+                            <option value="principal" ${user.role === 'principal' ? 'selected' : ''}>Principal (Schulleiter)</option>
+                            <option value="westroad" ${user.role === 'westroad' ? 'selected' : ''}>Westroad Admin</option>
+                        </select>
+                        <input type="text" id="school-${uid}" class="school-input" placeholder="School ID" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
+                    </td>
+                    <td>
+                        <button class="btn-save" onclick="saveUser('${uid}')">Save</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }, error => {
+            console.error("Datenbank-Fehler:", error);
+            document.getElementById('user-table-body').innerHTML = `<tr><td colspan="4" style="text-align: center; color: #EF4444;">Fehler beim Laden: ${error.message}</td></tr>`;
+        });
+    }
 
     // Blendet das Eingabefeld für die School ID ein/aus
     function toggleSchoolInput(uid) {
@@ -250,7 +276,6 @@
     // Logout-Funktion
     function logout() {
         auth.signOut().then(() => {
-            // Nach dem Logout zurück zur Login-Seite leiten
             window.location.href = 'index.html';
         }).catch(err => {
             console.error("Logout Fehler:", err);
