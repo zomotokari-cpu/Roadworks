@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>West Coast: Road and Bus Informations</title>
+    <title>West Coast: Road and Bus Information</title>
     <style>
         :root {
             --wdc-navy: #002147;
@@ -214,18 +214,18 @@
                 return;
             }
             
-            // Prüfen, welche Login-Methode für diese E-Mail existiert
+            // Check which sign-in method exists for this email
             auth.fetchSignInMethodsForEmail(e).then((methods) => {
                 if (methods.includes('google.com')) {
-                    // Es ist ein Google-Account! Wir triggern den Google-Popup
+                    // It's a Google account! Trigger the Google popup
                     document.getElementById('error-msg').style.color = "#34D399";
-                    document.getElementById('error-msg').innerText = "Google-Account erkannt. Bitte im Popup anmelden...";
+                    document.getElementById('error-msg').innerText = "Google account detected. Please sign in via the popup...";
                     
                     auth.signInWithPopup(googleProvider).then((result) => {
-                        // Sicherstellen, dass die eingetippte E-Mail mit dem Google-Account übereinstimmt
+                        // Ensure the entered email matches the Google account
                         if (result.user.email !== e) {
                             document.getElementById('error-msg').style.color = "#EF4444";
-                            document.getElementById('error-msg').innerText = "Eingegebene E-Mail stimmt nicht mit dem Google-Konto übereinstimmen.";
+                            document.getElementById('error-msg').innerText = "The entered email does not match the Google account.";
                             auth.signOut();
                             return;
                         }
@@ -233,7 +233,7 @@
                     }).catch(handleAuthError);
                     
                 } else {
-                    // Normaler E-Mail/Passwort-Account
+                    // Normal email/password account
                     if (!p) {
                         document.getElementById('error-msg').style.color = "#EF4444";
                         document.getElementById('error-msg').innerText = "Please enter your password.";
@@ -242,7 +242,7 @@
                     executeAuth(e, p);
                 }
             }).catch(error => {
-                // Falls die E-Mail gar nicht existiert, fängt executeAuth das ab
+                // If the email does not exist, executeAuth will handle it
                 if (!p) {
                     document.getElementById('error-msg').style.color = "#EF4444";
                     document.getElementById('error-msg').innerText = "Please enter your password.";
@@ -252,13 +252,13 @@
             });
         }
         
-        // Hilfsfunktion zur Vermeidung von doppeltem Code für das Auslesen der Rolle
+        // Helper function to avoid duplicate code for checking roles
         function checkUserRoleAndRedirect(uid) {
             db.ref('users/' + uid).once('value').then(snap => {
                 const userData = snap.val();
                 if (!userData || userData.role === 'none') {
                     document.getElementById('error-msg').style.color = "#EF4444";
-                    document.getElementById('error-msg').innerText = "Zugriff verweigert. Bitte Admin kontaktieren.";
+                    document.getElementById('error-msg').innerText = "Access denied. Please contact the administrator.";
                     auth.signOut();
                     return;
                 }
@@ -266,7 +266,7 @@
             });
         }
         
-        // Zentrales Error-Handling
+        // Centralized error handling
         function handleAuthError(error) {
             console.error("Auth Error: ", error);
             document.getElementById('error-msg').style.color = "#EF4444";
@@ -285,7 +285,7 @@
                 
                 db.ref('users/' + user.uid).once('value').then(snap => {
                     if (!snap.exists()) {
-                        // Völlig neuer User -> kriegt 'none' und leere School ID
+                        // Brand new user -> gets 'none' role and empty School ID
                         db.ref('users/' + user.uid).set({
                             name: user.displayName || "Google User",
                             email: user.email,
@@ -293,39 +293,39 @@
                             schoolID: ''
                         }).then(() => {
                             document.getElementById('error-msg').style.color = "#34D399";
-                            document.getElementById('error-msg').innerText = "Account erstellt. Bitte schreiben Sie den Admin an.";
+                            document.getElementById('error-msg').innerText = "Account created. Please contact the administrator.";
                             
                             setTimeout(() => { 
                                 auth.signOut(); 
-                                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Login with Google"; }
                             }, 1200);
                         });
                     } else {
                         const userData = snap.val();
                         if (userData.role === 'none') {
                             document.getElementById('error-msg').style.color = "#EF4444";
-                            document.getElementById('error-msg').innerText = "Ihr Account hat noch keine Rechte. Bitte schreiben Sie den Admin an.";
+                            document.getElementById('error-msg').innerText = "Your account does not have permissions yet. Please contact the administrator.";
                             setTimeout(() => { 
                                 auth.signOut(); 
-                                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Login with Google"; }
                             }, 1200);
                         } else {
-                            if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                            if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Login with Google"; }
                             redirectBasedOnRole(userData.role);
                         }
                     }
                 });
             }).catch(error => {
-                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Login with Google"; }
                 if (error.code === "auth/cancelled-popup-request") return;
                 
                 console.error("Google Auth Error: ", error);
                 document.getElementById('error-msg').style.color = "#EF4444";
-                document.getElementById('error-msg').innerText = "Google-Anmeldung fehlgeschlagen.";
+                document.getElementById('error-msg').innerText = "Google sign-in failed.";
             });
         }
 
-        // Einheitliche Pipeline für die Rechte-Prüfung
+        // Unified pipeline for authentication checking
         function executeAuth(email, password) {
             auth.signInWithEmailAndPassword(email, password).then((userCredential) => {
                 
@@ -334,7 +334,7 @@
                     
                     if (!userData || userData.role === 'none') {
                         document.getElementById('error-msg').style.color = "#EF4444";
-                        document.getElementById('error-msg').innerText = "Zugriff verweigert. Bitte Admin kontaktieren.";
+                        document.getElementById('error-msg').innerText = "Access denied. Please contact the administrator.";
                         auth.signOut();
                         return;
                     }
@@ -348,7 +348,7 @@
             });
         }
 
-        // Steuerung aller 4 aktiven Rollen
+        // Navigation control for all 4 active roles
         function redirectBasedOnRole(role) {
             if(role === 'admin') window.location.href = 'admin.html';
             if(role === 'parent') window.location.href = 'parent.html';
