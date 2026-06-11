@@ -180,25 +180,18 @@
 
     // AUTH-STATE BEACHTEN: Prüfen, wer eingeloggt ist
     auth.onAuthStateChanged(user => {
-        if (user && user.email === "admin@test.com") {
-            // Admin ist eingeloggt -> Daten laden
-            loadUserTable();
-        } else {
-            // Kein Admin eingeloggt -> Weiterleitung zum Haupt-Login
-            // Alternativ kannst du hier ein prompt nutzen, um dich direkt anzumelden:
-            const email = prompt("Bitte Admin-Email eingeben:", "");
-            const password = prompt("Bitte Admin-Passwort eingeben:", "");
-            
-            if (email === "admin@test.com" && password) {
-                auth.signInWithEmailAndPassword(email, password)
-                    .then(() => { location.reload(); })
-                    .catch(err => {
-                        alert("Login fehlgeschlagen: " + err.message);
-                        window.location.href = 'index.html';
-                    });
+        if (user) {
+            // Es ist ein User eingeloggt. Ist es der Admin?
+            if (user.email === "admin@test.com") {
+                // Ja -> Tabelle laden
+                loadUserTable();
             } else {
+                // Nein, ein unbefugter User -> Zurück zum Login
                 window.location.href = 'index.html';
             }
+        } else {
+            // Überhaupt kein User eingeloggt -> Zurück zum Login
+            window.location.href = 'index.html';
         }
     });
 
