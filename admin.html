@@ -131,8 +131,8 @@
 <div class="admin-box">
     <div class="header-container">
         <div>
-            <h2>Admin Dashboard – Benutzerfreischaltung</h2>
-            <p>Hier sind alle Accounts aus der Datenbank:</p>
+            <h2>Admin Dashboard – User Authorization</h2>
+            <p>Registered accounts within the database:</p>
         </div>
         <button class="btn-logout" onclick="logout()">Logout</button>
     </div>
@@ -142,13 +142,13 @@
             <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Rolle / Berechtigung</th>
-                <th>Aktion</th>
+                <th>Role / Permissions</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody id="user-table-body">
             <tr>
-                <td colspan="4" style="text-align: center; color: #6B7280;">Lade Profile aus Firebase...</td>
+                <td colspan="4" style="text-align: center; color: #6B7280;">Loading user profiles from Firebase...</td>
             </tr>
         </tbody>
     </table>
@@ -160,8 +160,7 @@
 <script src="app.js"></script>
 
 <script>
-
-    // Session-Wächter auf der Admin-Seite
+    // Session guardian on the admin page
     auth.onAuthStateChanged(user => {
         if (user) {
             db.ref('users/' + user.uid + '/role').once('value').then(snap => {
@@ -172,7 +171,7 @@
                     window.location.href = 'index.html';
                 }
             }).catch(err => {
-                console.error("Fehler bei Rollenprüfung:", err);
+                console.error("Error during role verification:", err);
                 window.location.href = 'index.html';
             });
         } else {
@@ -187,14 +186,14 @@
             tbody.innerHTML = ""; 
 
             if (!users) {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6B7280;">Keine User im System gefunden.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6B7280;">No users found in the system.</td></tr>`;
                 return;
             }
 
             for (let uid in users) {
                 const user = users[uid];
                 
-                // Admin taucht nicht in der Bearbeitungsliste auf
+                // Admin does not appear in the editable list to prevent accidental self-lockouts
                 if (user.role === 'admin') continue;
 
                 const tr = document.createElement('tr');
@@ -205,12 +204,12 @@
                     <td>${user.email}</td>
                     <td>
                         <select id="role-${uid}" onchange="toggleSchoolInput('${uid}')">
-                            <option value="none" ${user.role === 'none' ? 'selected' : ''}>None (Keine Rechte)</option>
-                            <option value="parent" ${user.role === 'parent' ? 'selected' : ''}>Parent (Eltern)</option>
-                            <option value="principal" ${user.role === 'principal' ? 'selected' : ''}>Principal (Schulleiter)</option>
+                            <option value="none" ${user.role === 'none' ? 'selected' : ''}>None (No Permissions)</option>
+                            <option value="parent" ${user.role === 'parent' ? 'selected' : ''}>Parent</option>
+                            <option value="principal" ${user.role === 'principal' ? 'selected' : ''}>Principal</option>
                             <option value="westroad" ${user.role === 'westroad' ? 'selected' : ''}>Westroad Admin</option>
                         </select>
-                        <input type="text" id="school-${uid}" class="school-input" placeholder="School ID (z.B. westland-high)" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
+                        <input type="text" id="school-${uid}" class="school-input" placeholder="e.g. grey-high" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
                     </td>
                     <td>
                         <button class="btn-save" onclick="saveUser('${uid}')">Save</button>
@@ -219,8 +218,8 @@
                 tbody.appendChild(tr);
             }
         }, error => {
-            console.error("Datenbank-Fehler:", error);
-            document.getElementById('user-table-body').innerHTML = `<tr><td colspan="4" style="text-align: center; color: #EF4444;">Fehler beim Laden: ${error.message}</td></tr>`;
+            console.error("Database error:", error);
+            document.getElementById('user-table-body').innerHTML = `<tr><td colspan="4" style="text-align: center; color: #EF4444;">Failed to load data: ${error.message}</td></tr>`;
         });
     }
 
@@ -247,9 +246,9 @@
             role: selectedRole,
             schoolID: schoolIDValue
         }).then(() => {
-            alert("Rolle erfolgreich aktualisiert!");
+            alert("User permissions successfully updated!");
         }).catch(err => {
-            alert("Fehler beim Speichern: " + err.message);
+            alert("Failed to save changes: " + err.message);
         });
     }
 
@@ -257,7 +256,7 @@
         auth.signOut().then(() => {
             window.location.href = 'index.html';
         }).catch(err => {
-            alert("Fehler beim Abmelden.");
+            alert("Error during logout.");
         });
     }
 </script>
