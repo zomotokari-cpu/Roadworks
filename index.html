@@ -227,6 +227,13 @@
 
         // 3. GOOGLE ACCOUNT ERSTELLUNG / ANMELDUNG
         function createAccountWithGoogle() {
+            // Button holen und deaktivieren gegen Doppel-Klicks
+            const googleBtn = document.querySelector("button[onclick='createAccountWithGoogle()']");
+            if (googleBtn) {
+                googleBtn.disabled = true;
+                googleBtn.innerText = "Loading Google...";
+            }
+        
             auth.signInWithPopup(googleProvider).then((result) => {
                 const user = result.user;
                 
@@ -242,7 +249,15 @@
                         }).then(() => {
                             document.getElementById('error-msg').style.color = "#34D399"; // Grün für Erfolg
                             document.getElementById('error-msg').innerText = "Account erstellt. Bitte schreiben Sie den Admin an.";
-                            auth.signOut(); // Direkt wieder ausloggen, da noch keine Rechte
+                            
+                            // Sicherer Timeout für das SignOut, damit Firebase den Auth-State-Wechsel verarbeitet hat
+                            setTimeout(() => { 
+                                auth.signOut(); 
+                                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                            }, 1000);
+                        }).catch(err => {
+                            console.error("DB Write Error:", err);
+                            if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
                         });
                     } else {
                         // Account existiert bereits in der DB
@@ -250,17 +265,33 @@
                         if (userData.role === 'none') {
                             document.getElementById('error-msg').style.color = "#EF4444";
                             document.getElementById('error-msg').innerText = "Ihr Account hat noch keine Rechte. Bitte schreiben Sie den Admin an.";
-                            auth.signOut();
+                            setTimeout(() => { 
+                                auth.signOut(); 
+                                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                            }, 1000);
                         } else {
                             // Wenn er bereits freigeschaltet wurde, direkt weiterleiten
+                            if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
                             redirectBasedOnRole(userData.role);
                         }
                     }
                 });
             }).catch(error => {
+                // Button bei Fehler wieder freigeben
+                if (googleBtn) {
+                    googleBtn.disabled = false;
+                    googleBtn.innerText = "Create Account with Google";
+                }
+                
+                // Ignoriere den nervigen Abbruch-Fehler im UI, falls das Popup nur im Hintergrund blockiert wurde
+                if (error.code === "auth/cancelled-popup-request") {
+                    console.log("Popup-Anfrage im Hintergrund neu sortiert.");
+                    return;
+                }
+                
                 console.error("Google Auth Error: ", error);
                 document.getElementById('error-msg').style.color = "#EF4444";
-                document.getElementById('error-msg').innerText = "Google-Anmeldung fehlgeschlagen.";
+                document.getElementById('error-msg').innerText = "Google-Anmeldung fehlgeschlagen: " + error.message;
             });
         }
 
