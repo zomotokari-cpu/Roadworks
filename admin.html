@@ -24,16 +24,39 @@
             border-radius: 6px;
             border-top: 6px solid #002147;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 25px;
         }
         h2 { 
             color: #002147; 
-            margin-top: 0;
+            margin: 0 0 5px 0;
             font-size: 1.6rem;
         }
         p {
             color: #4B5563;
             font-size: 0.95rem;
-            margin-bottom: 25px;
+            margin: 0;
+        }
+        .btn-logout {
+            background: #EF4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            transition: background 0.2s;
+        }
+        .btn-logout:hover {
+            background: #DC2626;
         }
         table {
             width: 100%;
@@ -106,8 +129,13 @@
 <body>
 
 <div class="admin-box">
-    <h2>Admin Dashboard – Benutzerfreischaltung</h2>
-    <p>Hier sind alle Accounts, die sich via Google registriert haben:</p>
+    <div class="header-container">
+        <div>
+            <h2>Admin Dashboard – Benutzerfreischaltung</h2>
+            <p>Hier sind alle Accounts, die sich via Google registriert haben:</p>
+        </div>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
     
     <table>
         <thead>
@@ -127,10 +155,11 @@
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 
 <script>
-    // TO-DO: Kopiere diesen Block exakt aus deiner 'app.js' hier hinein!
+    // WICHTIG: Ersetze diese Platzhalter mit den echten Werten aus deiner 'app.js'!
     // -----------------------------------------------------------------
     const firebaseConfig = {
         apiKey: "DEIN_API_KEY",
@@ -143,9 +172,10 @@
     };
     // -----------------------------------------------------------------
 
-    // Firebase initialisieren
+    // Firebase initialisieren (unter eigenem Kontext, um Konflikte zu vermeiden)
     const adminApp = firebase.initializeApp(firebaseConfig, "adminContext");
     const db = adminApp.database();
+    const auth = adminApp.auth();
 
     // Live-Abfrage der Nutzerdatenbank
     db.ref('users').on('value', snap => {
@@ -213,6 +243,17 @@
             alert("Erfolgreich gespeichert!");
         }).catch(err => {
             alert("Fehler beim Speichern: " + err.message);
+        });
+    }
+
+    // Logout-Funktion
+    function logout() {
+        auth.signOut().then(() => {
+            // Nach dem Logout zurück zur Login-Seite leiten
+            window.location.href = 'index.html';
+        }).catch(err => {
+            console.error("Logout Fehler:", err);
+            alert("Fehler beim Abmelden.");
         });
     }
 </script>
