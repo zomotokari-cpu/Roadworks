@@ -205,15 +205,72 @@
         }
 
         function login() {
-            const e = document.getElementById('email').value;
+            const e = document.getElementById('email').value.trim();
             const p = document.getElementById('password').value;
             
-            if (!e || !p) {
+            if (!e) {
                 document.getElementById('error-msg').style.color = "#EF4444";
-                document.getElementById('error-msg').innerText = "Please fill in all fields.";
+                document.getElementById('error-msg').innerText = "Please enter your email address.";
                 return;
             }
-            executeAuth(e, p);
+            
+            // Prüfen, welche Login-Methode für diese E-Mail existiert
+            auth.fetchSignInMethodsForEmail(e).then((methods) => {
+                if (methods.includes('google.com')) {
+                    // Es ist ein Google-Account! Wir triggern den Google-Popup
+                    document.getElementById('error-msg').style.color = "#34D399";
+                    document.getElementById('error-msg').innerText = "Google-Account erkannt. Bitte im Popup anmelden...";
+                    
+                    auth.signInWithPopup(googleProvider).then((result) => {
+                        // Sicherstellen, dass die eingetippte E-Mail mit dem Google-Account übereinstimmt
+                        if (result.user.email !== e) {
+                            document.getElementById('error-msg').style.color = "#EF4444";
+                            document.getElementById('error-msg').innerText = "Eingegebene E-Mail stimmt nicht mit dem Google-Konto übereinstimmen.";
+                            auth.signOut();
+                            return;
+                        }
+                        checkUserRoleAndRedirect(result.user.uid);
+                    }).catch(handleAuthError);
+                    
+                } else {
+                    // Normaler E-Mail/Passwort-Account
+                    if (!p) {
+                        document.getElementById('error-msg').style.color = "#EF4444";
+                        document.getElementById('error-msg').innerText = "Please enter your password.";
+                        return;
+                    }
+                    executeAuth(e, p);
+                }
+            }).catch(error => {
+                // Falls die E-Mail gar nicht existiert, fängt executeAuth das ab
+                if (!p) {
+                    document.getElementById('error-msg').style.color = "#EF4444";
+                    document.getElementById('error-msg').innerText = "Please enter your password.";
+                } else {
+                    executeAuth(e, p);
+                }
+            });
+        }
+        
+        // Hilfsfunktion zur Vermeidung von doppeltem Code für das Auslesen der Rolle
+        function checkUserRoleAndRedirect(uid) {
+            db.ref('users/' + uid).once('value').then(snap => {
+                const userData = snap.val();
+                if (!userData || userData.role === 'none') {
+                    document.getElementById('error-msg').style.color = "#EF4444";
+                    document.getElementById('error-msg').innerText = "Zugriff verweigert. Bitte Admin kontaktieren.";
+                    auth.signOut();
+                    return;
+                }
+                redirectBasedOnRole(userData.role);
+            });
+        }
+        
+        // Zentrales Error-Handling
+        function handleAuthError(error) {
+            console.error("Auth Error: ", error);
+            document.getElementById('error-msg').style.color = "#EF4444";
+            document.getElementById('error-msg').innerText = "Invalid credentials. Please try again.";
         }
 
         function createAccountWithGoogle() {
