@@ -18,7 +18,7 @@
         }
         .admin-box {
             width: 100%;
-            max-width: 900px;
+            max-width: 950px;
             background: rgba(255, 255, 255, 0.96);
             padding: 30px;
             border-radius: 6px;
@@ -84,29 +84,27 @@
             color: #1F2937;
             font-size: 0.95rem;
         }
-        select {
+        select, .school-input {
             padding: 8px;
             border: 1px solid #D1D5DB;
             border-radius: 4px;
             background: #FAFAFA;
             font-size: 0.9rem;
             outline: none;
-        }
-        select:focus {
-            border-color: #002147;
-        }
-        .school-input {
-            width: 140px;
-            padding: 8px;
-            margin-left: 10px;
-            border: 1px solid #D1D5DB;
-            border-radius: 4px;
-            font-size: 0.9rem;
             box-sizing: border-box;
         }
-        .school-input:focus {
-            outline: none;
+        select:focus, .school-input:focus {
             border-color: #002147;
+        }
+        .school-container {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        .school-input {
+            width: 160px;
         }
         .btn-save {
             background: #D97706;
@@ -160,13 +158,15 @@
 <script src="app.js"></script>
 
 <script>
+    let availableSchools = [];
+
     // Session guardian on the admin page
     auth.onAuthStateChanged(user => {
         if (user) {
             db.ref('users/' + user.uid + '/role').once('value').then(snap => {
                 const role = snap.val();
                 if (role === 'admin') {
-                    loadUserTable();
+                    listenToSchools();
                 } else {
                     window.location.href = 'index.html';
                 }
@@ -179,8 +179,20 @@
         }
     });
 
+    // Synchronize available school IDs first
+    function listenToSchools() {
+        db.ref('schools').on('value', snap => {
+            availableSchools = [];
+            const data = snap.val();
+            if (data) {
+                availableSchools = Object.keys(data);
+            }
+            loadUserTable();
+        });
+    }
+
     function loadUserTable() {
-        db.ref('users').on('value', snap => {
+        db.ref('users').once('value').then(snap => {
             const users = snap.val();
             const tbody = document.getElementById('user-table-body');
             tbody.innerHTML = ""; 
@@ -192,24 +204,46 @@
 
             for (let uid in users) {
                 const user = users[uid];
-                
-                // Admin does not appear in the editable list to prevent accidental self-lockouts
                 if (user.role === 'admin') continue;
 
                 const tr = document.createElement('tr');
-                const showSchoolInput = user.role === 'principal' ? 'inline-block' : 'none';
+                const isPrincipal = user.role === 'principal';
+                const showContainer = isPrincipal ? 'inline-flex' : 'none';
+                
+                // Build dynamic dropdown options based on DB schools
+                let schoolOptions = `<option value="" ${!user.schoolId ? 'selected' : ''}>-- Select School --</option>`;
+                let isExistingSchool = false;
+
+                availableSchools.forEach(schoolKey => {
+                    const selected = user.schoolId === schoolKey ? 'selected' : '';
+                    if (selected) isExistingSchool = true;
+                    schoolOptions += `<option value="${schoolKey}" ${selected}>${schoolKey}</option>`;
+                });
+
+                // If the user has a custom ID that isn't listed yet, keep it selected
+                if (user.schoolId && !isExistingSchool) {
+                    schoolOptions += `<option value="${user.schoolId}" selected>${user.schoolId}</option>`;
+                }
+
+                schoolOptions += `<option value="__new__">+ Add New School...</option>`;
 
                 tr.innerHTML = `
                     <td><b>${user.name || 'Google User'}</b></td>
                     <td>${user.email}</td>
                     <td>
-                        <select id="role-${uid}" onchange="toggleSchoolInput('${uid}')">
+                        <select id="role-${uid}" onchange="toggleRole('${uid}')">
                             <option value="none" ${user.role === 'none' ? 'selected' : ''}>None (No Permissions)</option>
                             <option value="parent" ${user.role === 'parent' ? 'selected' : ''}>Parent</option>
                             <option value="principal" ${user.role === 'principal' ? 'selected' : ''}>Principal</option>
                             <option value="westroad" ${user.role === 'westroad' ? 'selected' : ''}>Westroad Admin</option>
                         </select>
-                        <input type="text" id="school-${uid}" class="school-input" placeholder="e.g. grey-high" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
+                        
+                        <div id="school-container-${uid}" class="school-container" style="display: ${showContainer};">
+                            <select id="school-select-${uid}" onchange="toggleSchoolSelect('${uid}')">
+                                ${schoolOptions}
+                            </select>
+                            <input type="text" id="school-custom-${uid}" class="school-input" placeholder="id (e.g. grey-high)" style="display: none;">
+                        </div>
                     </td>
                     <td>
                         <button class="btn-save" onclick="saveUser('${uid}')">Save</button>
@@ -217,39 +251,81 @@
                 `;
                 tbody.appendChild(tr);
             }
-        }, error => {
+        }).catch(error => {
             console.error("Database error:", error);
             document.getElementById('user-table-body').innerHTML = `<tr><td colspan="4" style="text-align: center; color: #EF4444;">Failed to load data: ${error.message}</td></tr>`;
         });
     }
 
-    function toggleSchoolInput(uid) {
+    function toggleRole(uid) {
         const roleSelect = document.getElementById(`role-${uid}`).value;
-        const schoolInput = document.getElementById(`school-${uid}`);
+        const container = document.getElementById(`school-container-${uid}`);
         if (roleSelect === 'principal') {
-            schoolInput.style.display = 'inline-block';
+            container.style.display = 'inline-flex';
         } else {
-            schoolInput.style.display = 'none';
-            schoolInput.value = ''; 
+            container.style.display = 'none';
         }
     }
 
-    function saveUser(uid) {
-        const selectedRole = document.getElementById(`role-${uid}`).value;
-        let schoolIDValue = document.getElementById(`school-${uid}`).value;
+    function toggleSchoolSelect(uid) {
+        const selectVal = document.getElementById(`school-select-${uid}`).value;
+        const customInput = document.getElementById(`school-custom-${uid}`);
+        if (selectVal === '__new__') {
+            customInput.style.display = 'inline-block';
+            customInput.focus();
+        } else {
+            customInput.style.display = 'none';
+            customInput.value = '';
+        }
+    }
 
-        if (selectedRole !== 'principal') {
-            schoolIDValue = "";
+    async function saveUser(uid) {
+        const selectedRole = document.getElementById(`role-${uid}`).value;
+        const schoolSelect = document.getElementById(`school-select-${uid}`);
+        let schoolIdValue = "";
+
+        if (selectedRole === 'principal') {
+            if (schoolSelect.value === '__new__') {
+                const customId = document.getElementById(`school-custom-${uid}`).value.trim().toLowerCase();
+                if (!customId) {
+                    alert("Please enter a unique School ID.");
+                    return;
+                }
+                schoolIdValue = customId;
+            } else {
+                schoolIdValue = schoolSelect.value;
+            }
         }
 
-        db.ref('users/' + uid).update({
-            role: selectedRole,
-            schoolID: schoolIDValue
-        }).then(() => {
+        try {
+            // Check if school setup is required
+            if (selectedRole === 'principal' && schoolIdValue) {
+                const schoolSnap = await db.ref('schools/' + schoolIdValue).once('value');
+                
+                // If the school node doesn't exist, create it cleanly
+                if (!schoolSnap.exists()) {
+                    const schoolName = prompt(`The school ID "${schoolIdValue}" does not exist yet.\nPlease enter the full name for this school:`);
+                    if (!schoolName || !schoolName.trim()) {
+                        alert("Saving cancelled. A school name is required to initialize a new entry.");
+                        return;
+                    }
+                    await db.ref('schools/' + schoolIdValue).set({
+                        name: schoolName.trim()
+                    });
+                }
+            }
+
+            // Update user record
+            await db.ref('users/' + uid).update({
+                role: selectedRole,
+                schoolId: schoolIdValue
+            });
+
             alert("User permissions successfully updated!");
-        }).catch(err => {
+            loadUserTable(); // Refresh view
+        } catch (err) {
             alert("Failed to save changes: " + err.message);
-        });
+        }
     }
 
     function logout() {
