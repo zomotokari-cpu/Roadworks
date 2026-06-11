@@ -96,7 +96,7 @@
             border-color: #002147;
         }
         .school-input {
-            width: 120px;
+            width: 140px;
             padding: 8px;
             margin-left: 10px;
             border: 1px solid #D1D5DB;
@@ -132,7 +132,7 @@
     <div class="header-container">
         <div>
             <h2>Admin Dashboard – Benutzerfreischaltung</h2>
-            <p>Hier sind alle Accounts, die sich via Google registriert haben:</p>
+            <p>Hier sind alle Accounts aus der Datenbank:</p>
         </div>
         <button class="btn-logout" onclick="logout()">Logout</button>
     </div>
@@ -157,45 +157,32 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="app.js"></script>
 
 <script>
-    // WICHTIG: Ersetze diese Platzhalter mit den echten Werten aus deiner 'app.js'!
-    // -----------------------------------------------------------------
-    const firebaseConfig = {
-        apiKey: "AIzaSyBuL1g1nCDi_0FwIi0cdZAhw_FxWtaI84s",
-        authDomain: "westroads-4292e.firebaseapp.com",
-        databaseURL: "https://westroads-4292e-default-rtdb.firebaseio.com",
-        projectId: "westroads-4292e",
-        storageBucket: "westroads-4292e.firebasestorage.app",
-        messagingSenderId: "385355475632",
-        appId: "1:385355475632:web:b5d65189197a8d20d7e975",
-        measurementId: "G-4PS4S7N52Y"
-    };
-    // -----------------------------------------------------------------
+    // Keine zweite App-Instanz initialisieren! Wir nutzen die aus app.js
+    const db = firebase.database();
+    const auth = firebase.auth();
 
-    // Firebase initialisieren (unter eigenem Kontext, um Konflikte zu vermeiden)
-    const adminApp = firebase.initializeApp(firebaseConfig, "adminContext");
-    const db = adminApp.database();
-    const auth = adminApp.auth();
-
-    // AUTH-STATE BEACHTEN: Prüfen, wer eingeloggt ist
+    // Session-Wächter auf der Admin-Seite
     auth.onAuthStateChanged(user => {
         if (user) {
-            // Es ist ein User eingeloggt. Ist es der Admin?
-            if (user.email === "admin@test.com") {
-                // Ja -> Tabelle laden
-                loadUserTable();
-            } else {
-                // Nein, ein unbefugter User -> Zurück zum Login
+            db.ref('users/' + user.uid + '/role').once('value').then(snap => {
+                const role = snap.val();
+                if (role === 'admin') {
+                    loadUserTable();
+                } else {
+                    window.location.href = 'index.html';
+                }
+            }).catch(err => {
+                console.error("Fehler bei Rollenprüfung:", err);
                 window.location.href = 'index.html';
-            }
+            });
         } else {
-            // Überhaupt kein User eingeloggt -> Zurück zum Login
             window.location.href = 'index.html';
         }
     });
 
-    // Funktion zum Laden der Tabelle (wird nur aufgerufen, wenn autorisiert)
     function loadUserTable() {
         db.ref('users').on('value', snap => {
             const users = snap.val();
@@ -203,12 +190,16 @@
             tbody.innerHTML = ""; 
 
             if (!users) {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6B7280;">Keine registrierten Google-User gefunden.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6B7280;">Keine User im System gefunden.</td></tr>`;
                 return;
             }
 
             for (let uid in users) {
                 const user = users[uid];
+                
+                // Admin taucht nicht in der Bearbeitungsliste auf
+                if (user.role === 'admin') continue;
+
                 const tr = document.createElement('tr');
                 const showSchoolInput = user.role === 'principal' ? 'inline-block' : 'none';
 
@@ -218,10 +209,11 @@
                     <td>
                         <select id="role-${uid}" onchange="toggleSchoolInput('${uid}')">
                             <option value="none" ${user.role === 'none' ? 'selected' : ''}>None (Keine Rechte)</option>
+                            <option value="parent" ${user.role === 'parent' ? 'selected' : ''}>Parent (Eltern)</option>
                             <option value="principal" ${user.role === 'principal' ? 'selected' : ''}>Principal (Schulleiter)</option>
                             <option value="westroad" ${user.role === 'westroad' ? 'selected' : ''}>Westroad Admin</option>
                         </select>
-                        <input type="text" id="school-${uid}" class="school-input" placeholder="School ID" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
+                        <input type="text" id="school-${uid}" class="school-input" placeholder="School ID (z.B. westland-high)" value="${user.schoolID || ''}" style="display: ${showSchoolInput};">
                     </td>
                     <td>
                         <button class="btn-save" onclick="saveUser('${uid}')">Save</button>
@@ -235,7 +227,6 @@
         });
     }
 
-    // Blendet das Eingabefeld für die School ID ein/aus
     function toggleSchoolInput(uid) {
         const roleSelect = document.getElementById(`role-${uid}`).value;
         const schoolInput = document.getElementById(`school-${uid}`);
@@ -247,7 +238,6 @@
         }
     }
 
-    // Schreibt die Änderungen live zurück in die Realtime Database
     function saveUser(uid) {
         const selectedRole = document.getElementById(`role-${uid}`).value;
         let schoolIDValue = document.getElementById(`school-${uid}`).value;
@@ -260,18 +250,16 @@
             role: selectedRole,
             schoolID: schoolIDValue
         }).then(() => {
-            alert("Erfolgreich gespeichert!");
+            alert("Rolle erfolgreich aktualisiert!");
         }).catch(err => {
             alert("Fehler beim Speichern: " + err.message);
         });
     }
 
-    // Logout-Funktion
     function logout() {
         auth.signOut().then(() => {
             window.location.href = 'index.html';
         }).catch(err => {
-            console.error("Logout Fehler:", err);
             alert("Fehler beim Abmelden.");
         });
     }
