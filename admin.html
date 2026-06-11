@@ -161,8 +161,8 @@
 
 <script>
     // Keine zweite App-Instanz initialisieren! Wir nutzen die aus app.js
-    const db = firebase.database();
-    const auth = firebase.auth();
+    db = firebase.database();
+    auth = firebase.auth();
 
     // Session-Wächter auf der Admin-Seite
     auth.onAuthStateChanged(user => {
