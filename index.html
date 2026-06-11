@@ -5,11 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>West Coast: Road and Bus Informations</title>
     <style>
-        /* Eigenständiges Farbschema (Unabhängig von der style.css) */
         :root {
-            --wdc-navy: #002147;       /* Tiefes Marineblau für den Haupt-Login */
+            --wdc-navy: #002147;
             --wdc-navy-hover: #001530;
-            --wdc-gold: #D97706;       /* Warmes Orange/Braun für den Map-Button */
+            --wdc-gold: #D97706;
             --wdc-gold-hover: #B45309;
             --wdc-text-dark: #1F2937;
             --wdc-border: #D1D5DB;
@@ -22,7 +21,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* Kräftiger Blau-Grün-Verlauf im Hintergrund */
             background: linear-gradient(135deg, #022c22 0%, #047857 50%, #0369a1 100%);
             background-attachment: fixed;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -110,7 +108,6 @@
             transform: scale(0.99);
         }
 
-        /* Orange/Braun für den schnellen Map-Zugang */
         .btn-secondary {
             background: var(--wdc-gold);
             color: #ffffff;
@@ -122,7 +119,6 @@
             background: var(--wdc-gold-hover);
         }
 
-        /* Dunkles Grün-Blau / Marineblau für den Admin-Login */
         .btn-primary {
             background: var(--wdc-navy);
             color: #ffffff;
@@ -198,20 +194,16 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="app.js"></script>
     <script>
-        // Google Auth Provider initialisieren
         const googleProvider = new firebase.auth.GoogleAuthProvider();
 
-        // Trigger login on pressing Enter inside password field
         document.getElementById('password').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') login();
         });
 
-        // 1. QUICK LOGIN FOR PARENTS (Using specific test account)
         function quickParentLogin() {
             executeAuth("par@test.com", "123456");
         }
 
-        // 2. STANDARD STAFF ACCOUNT LOGIN FROM FORM inputs
         function login() {
             const e = document.getElementById('email').value;
             const p = document.getElementById('password').value;
@@ -221,13 +213,10 @@
                 document.getElementById('error-msg').innerText = "Please fill in all fields.";
                 return;
             }
-
             executeAuth(e, p);
         }
 
-        // 3. GOOGLE ACCOUNT ERSTELLUNG / ANMELDUNG
         function createAccountWithGoogle() {
-            // Button holen und deaktivieren gegen Doppel-Klicks
             const googleBtn = document.querySelector("button[onclick='createAccountWithGoogle()']");
             if (googleBtn) {
                 googleBtn.disabled = true;
@@ -237,30 +226,24 @@
             auth.signInWithPopup(googleProvider).then((result) => {
                 const user = result.user;
                 
-                // Prüfen, ob der User bereits in der Realtime Database existiert
                 db.ref('users/' + user.uid).once('value').then(snap => {
                     if (!snap.exists()) {
-                        // Account existiert noch nicht -> Neu anlegen mit Rolle 'none'
+                        // Völlig neuer User -> kriegt 'none' und leere School ID
                         db.ref('users/' + user.uid).set({
                             name: user.displayName || "Google User",
                             email: user.email,
                             role: 'none',
                             schoolID: ''
                         }).then(() => {
-                            document.getElementById('error-msg').style.color = "#34D399"; // Grün für Erfolg
+                            document.getElementById('error-msg').style.color = "#34D399";
                             document.getElementById('error-msg').innerText = "Account erstellt. Bitte schreiben Sie den Admin an.";
                             
-                            // Sicherer Timeout für das SignOut, damit Firebase den Auth-State-Wechsel verarbeitet hat
                             setTimeout(() => { 
                                 auth.signOut(); 
                                 if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
-                            }, 1000);
-                        }).catch(err => {
-                            console.error("DB Write Error:", err);
-                            if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                            }, 1200);
                         });
                     } else {
-                        // Account existiert bereits in der DB
                         const userData = snap.val();
                         if (userData.role === 'none') {
                             document.getElementById('error-msg').style.color = "#EF4444";
@@ -268,44 +251,30 @@
                             setTimeout(() => { 
                                 auth.signOut(); 
                                 if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
-                            }, 1000);
+                            }, 1200);
                         } else {
-                            // Wenn er bereits freigeschaltet wurde, direkt weiterleiten
                             if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
                             redirectBasedOnRole(userData.role);
                         }
                     }
                 });
             }).catch(error => {
-                // Button bei Fehler wieder freigeben
-                if (googleBtn) {
-                    googleBtn.disabled = false;
-                    googleBtn.innerText = "Create Account with Google";
-                }
-                
-                // Ignoriere den nervigen Abbruch-Fehler im UI, falls das Popup nur im Hintergrund blockiert wurde
-                if (error.code === "auth/cancelled-popup-request") {
-                    console.log("Popup-Anfrage im Hintergrund neu sortiert.");
-                    return;
-                }
+                if (googleBtn) { googleBtn.disabled = false; googleBtn.innerText = "Create Account with Google"; }
+                if (error.code === "auth/cancelled-popup-request") return;
                 
                 console.error("Google Auth Error: ", error);
                 document.getElementById('error-msg').style.color = "#EF4444";
-                document.getElementById('error-msg').innerText = "Google-Anmeldung fehlgeschlagen: " + error.message;
+                document.getElementById('error-msg').innerText = "Google-Anmeldung fehlgeschlagen.";
             });
         }
 
-        // Core authentication and redirection handler pipeline
+        // Einheitliche Pipeline für die Rechte-Prüfung
         function executeAuth(email, password) {
             auth.signInWithEmailAndPassword(email, password).then((userCredential) => {
-                // Sonderfall: Dein manuell angelegter Admin-Account in Firebase Auth
-                if (email === "admin@test.com") {
-                    window.location.href = 'admin.html';
-                    return;
-                }
-
+                
                 db.ref('users/' + userCredential.user.uid).once('value').then(snap => {
                     const userData = snap.val();
+                    
                     if (!userData || userData.role === 'none') {
                         document.getElementById('error-msg').style.color = "#EF4444";
                         document.getElementById('error-msg').innerText = "Zugriff verweigert. Bitte Admin kontaktieren.";
@@ -322,8 +291,9 @@
             });
         }
 
-        // Hilfsfunktion für die Weiterleitung nach Rolle
+        // Steuerung aller 4 aktiven Rollen
         function redirectBasedOnRole(role) {
+            if(role === 'admin') window.location.href = 'admin.html';
             if(role === 'parent') window.location.href = 'parent.html';
             if(role === 'principal') window.location.href = 'principal.html';
             if(role === 'westroad') window.location.href = 'westroad.html';
